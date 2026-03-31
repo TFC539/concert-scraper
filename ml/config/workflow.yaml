@@ -1,0 +1,22 @@
+seed: 42
+splits:
+  train: 0.8
+  val: 0.1
+  test: 0.1
+labels:
+  entity_tags:
+    - O
+    - B-PERFORMER
+    - I-PERFORMER
+    - B-PROGRAM
+    - I-PROGRAM
+    - B-HALL
+    - I-HALL
+paths:
+  raw_data: ml/data/raw/concerts.jsonl
+  labeled_data: ml/data/raw/labeled_examples.jsonl
+  processed_dir: ml/data/processed
+  models_dir: ml/models
+  eval_dir: ml/eval
+feature_flags:
+  app_enable_ml: ENABLE_ML_ENRICHMENT

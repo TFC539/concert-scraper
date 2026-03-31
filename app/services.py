@@ -1,13 +1,147 @@
 from __future__ import annotations
 
 import smtplib
+import unicodedata
 from email.message import EmailMessage
+from datetime import date, datetime
+import re
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import AppSettings, Concert, NotificationRule
 from .scrapers import scrape_all
+
+
+MONTH_MAP = {
+    "jan": 1,
+    "januar": 1,
+    "january": 1,
+    "feb": 2,
+    "februar": 2,
+    "february": 2,
+    "mar": 3,
+    "maerz": 3,
+    "marz": 3,
+    "march": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "mai": 5,
+    "jun": 6,
+    "juni": 6,
+    "june": 6,
+    "jul": 7,
+    "juli": 7,
+    "july": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "okt": 10,
+    "october": 10,
+    "oktober": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "dez": 12,
+    "december": 12,
+    "dezember": 12,
+}
+
+
+def _normalize_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", ascii_text).strip().lower()
+
+
+def _parse_concert_date(date_text: str) -> date | None:
+    if not date_text:
+        return None
+
+    normalized = _normalize_text(date_text)
+    normalized = normalized.replace(",", " ")
+
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(normalized, fmt).date()
+        except ValueError:
+            pass
+
+    parts = [part for part in re.split(r"[\s.]+", normalized) if part]
+    if len(parts) >= 3:
+        # Formats like: Tue 31 Mar 2026 / Dienstag 31 Maerz 2026
+        candidates = parts[-3:]
+        day_str, month_str, year_str = candidates
+        if day_str.isdigit() and year_str.isdigit():
+            month_number = MONTH_MAP.get(month_str[:3], MONTH_MAP.get(month_str))
+            if month_number:
+                try:
+                    return date(int(year_str), month_number, int(day_str))
+                except ValueError:
+                    return None
+
+    return None
+
+
+def _normalize_date_text(date_text: str) -> str:
+    parsed = _parse_concert_date(date_text)
+    return parsed.isoformat() if parsed else ""
+
+
+HALL_HINTS = (
+    "saal",
+    "halle",
+    "philharmonie",
+    "kirche",
+    "arena",
+    "theater",
+)
+
+
+def _looks_like_hall_text(text: str) -> bool:
+    normalized = _normalize_text(text)
+    return any(hint in normalized for hint in HALL_HINTS)
+
+
+def _is_upcoming(date_text: str, reference_date: date) -> bool:
+    parsed = _parse_concert_date(date_text)
+    if parsed is None:
+        # Unknown format should not block initial population.
+        return True
+    return parsed >= reference_date
+
+
+def backfill_concert_metadata(db: Session) -> int:
+    concerts = db.scalars(select(Concert)).all()
+    changed = 0
+
+    for concert in concerts:
+        updated = False
+
+        normalized_date = _normalize_date_text(concert.date or "")
+        if normalized_date and (concert.date_normalized or "") != normalized_date:
+            concert.date_normalized = normalized_date
+            updated = True
+
+        if (concert.source or "").strip().lower() == "proarte":
+            hall = (concert.hall or "").strip()
+            performers = (concert.performers or "").strip()
+            if not hall and performers and _looks_like_hall_text(performers):
+                concert.hall = performers
+                concert.performers = ""
+                updated = True
+
+        if updated:
+            changed += 1
+
+    if changed:
+        db.commit()
+
+    return changed
 
 
 def get_or_create_settings(db: Session) -> AppSettings:
@@ -28,9 +162,12 @@ def should_notify(concert: Concert, rule: NotificationRule) -> bool:
 
     checks = [
         (rule.name_contains, concert.name),
-        (rule.performer_contains, concert.performers or ""),
+        (
+            rule.performer_contains,
+            " | ".join(part for part in [concert.performers or "", concert.name or ""] if part),
+        ),
         (rule.program_contains, concert.program or ""),
-        (rule.date_contains, concert.date or ""),
+        (rule.date_contains, " ".join(part for part in [concert.date or "", concert.date_normalized or ""] if part)),
         (rule.time_contains, concert.time or ""),
     ]
 
@@ -56,8 +193,10 @@ def send_email(settings: AppSettings, concert: Concert, matching_rules: list[Not
         f"Source: {concert.source}\n"
         f"Name: {concert.name}\n"
         f"Date: {concert.date}\n"
+        f"Normalized date: {concert.date_normalized}\n"
         f"Time: {concert.time}\n"
         f"Performers: {concert.performers}\n"
+        f"Hall: {concert.hall}\n"
         f"Program: {concert.program}\n"
         f"URL: {concert.source_url}\n"
     )
@@ -73,10 +212,17 @@ def send_email(settings: AppSettings, concert: Concert, matching_rules: list[Not
 def scrape_and_persist(db: Session) -> int:
     settings = get_or_create_settings(db)
     rules = db.scalars(select(NotificationRule)).all()
+    is_initial_import = db.scalar(select(Concert.id).limit(1)) is None
+    today = datetime.utcnow().date()
 
     inserted = 0
     scraped = scrape_all()
     for item in scraped:
+        normalized_date = _normalize_date_text(item.date)
+
+        if is_initial_import and not _is_upcoming(item.date, today):
+            continue
+
         exists = db.scalar(
             select(Concert).where(
                 Concert.source == item.source,
@@ -85,6 +231,26 @@ def scrape_and_persist(db: Session) -> int:
         )
 
         if exists:
+            updated = False
+
+            if normalized_date and (exists.date_normalized or "") != normalized_date:
+                exists.date_normalized = normalized_date
+                updated = True
+
+            if item.hall and (exists.hall or "") != item.hall:
+                exists.hall = item.hall
+                updated = True
+
+            if item.performers and (exists.performers or "") != item.performers:
+                exists.performers = item.performers
+                updated = True
+
+            if item.program and (exists.program or "") != item.program:
+                exists.program = item.program
+                updated = True
+
+            if updated:
+                db.add(exists)
             continue
 
         concert = Concert(
@@ -94,7 +260,9 @@ def scrape_and_persist(db: Session) -> int:
             name=item.name,
             program=item.program,
             performers=item.performers,
+            hall=item.hall,
             date=item.date,
+            date_normalized=normalized_date,
             time=item.time,
         )
         db.add(concert)

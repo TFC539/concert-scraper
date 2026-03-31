@@ -15,7 +15,9 @@ class Concert(Base):
     name = Column(String(512), nullable=False, index=True)
     program = Column(Text, nullable=True)
     performers = Column(Text, nullable=True)
+    hall = Column(Text, nullable=True)
     date = Column(String(64), nullable=True, index=True)
+    date_normalized = Column(String(16), nullable=True, index=True)
     time = Column(String(64), nullable=True)
     fetched_at = Column(DateTime, default=datetime.utcnow)
 

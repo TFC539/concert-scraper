@@ -9,7 +9,7 @@ It stores concerts in SQLite, provides dashboard filtering, and can send email n
 ## Features
 - Scheduler with configurable interval.
 - Scrape-now button.
-- Metadata ingestion: concert name, program, performers, date, time, source URL.
+- Metadata ingestion: concert name, program, performers, hall, date (raw + normalized), time, source URL.
 - Filter concerts by free-text, source, and date.
 - Notification rules on all metadata fields.
 - SMTP settings editable in dashboard.

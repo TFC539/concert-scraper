@@ -1,0 +1,1 @@
+This is a placeholder training artifact. Replace with full HF Trainer pipeline.

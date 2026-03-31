@@ -1,0 +1,8 @@
+{
+  "model_dir": "ml/models/run_001",
+  "test_rows": 4,
+  "f1_performers_target": 0.0,
+  "f1_program_target": 0.0,
+  "f1_hall_target": 0.0,
+  "note": "Placeholder evaluator. Replace with real inference + scoring."
+}

@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: concert-scraper-ml
+Version: 0.1.0
+Summary: Transformer-only metadata extraction pipeline for concert-scraper
+Requires-Python: >=3.10
+Requires-Dist: pyyaml>=6.0.1
+Requires-Dist: numpy>=1.26.4
+Requires-Dist: datasets>=2.20.0
+Requires-Dist: transformers>=4.44.2
+Requires-Dist: torch>=2.4.1
+Requires-Dist: accelerate>=0.34.2
+Requires-Dist: sentencepiece>=0.2.0
+Requires-Dist: scikit-learn>=1.5.1
+Requires-Dist: pandas>=2.2.2
+Requires-Dist: tqdm>=4.66.5
