@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Concert Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="container">
+  <h1>Concert Dashboard</h1>
+
+  <section>
+    <h2>Scraper Settings</h2>
+    <form method="post" action="/settings" class="grid-form">
+      <label>Interval (minutes)
+        <input type="number" name="scrape_interval_minutes" min="1" value="{{ settings.scrape_interval_minutes }}">
+      </label>
+      <label>SMTP Host
+        <input type="text" name="smtp_host" value="{{ settings.smtp_host }}">
+      </label>
+      <label>SMTP Port
+        <input type="number" name="smtp_port" value="{{ settings.smtp_port }}">
+      </label>
+      <label>SMTP Username
+        <input type="text" name="smtp_username" value="{{ settings.smtp_username }}">
+      </label>
+      <label>SMTP Password
+        <input type="password" name="smtp_password" value="{{ settings.smtp_password }}">
+      </label>
+      <label>Sender Email
+        <input type="email" name="sender_email" value="{{ settings.sender_email }}">
+      </label>
+      <label>Recipient Email
+        <input type="email" name="recipient_email" value="{{ settings.recipient_email }}">
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" name="notifications_enabled" {% if settings.notifications_enabled %}checked{% endif %}> Enable notifications
+      </label>
+      <button type="submit">Save Settings</button>
+    </form>
+    <form method="post" action="/scrape-now">
+      <button type="submit">Scrape Now</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Notification Rules</h2>
+    <form method="post" action="/rules" class="grid-form">
+      <label>Concert name contains<input type="text" name="name_contains"></label>
+      <label>Performer contains<input type="text" name="performer_contains"></label>
+      <label>Program contains<input type="text" name="program_contains"></label>
+      <label>Date contains<input type="text" name="date_contains"></label>
+      <label>Time contains<input type="text" name="time_contains"></label>
+      <label class="checkbox-row"><input type="checkbox" name="enabled" checked> Rule enabled</label>
+      <button type="submit">Add Rule</button>
+    </form>
+
+    <ul>
+      {% for rule in rules %}
+      <li>
+        #{{ rule.id }} — name: "{{ rule.name_contains }}", performer: "{{ rule.performer_contains }}", program: "{{ rule.program_contains }}", date: "{{ rule.date_contains }}", time: "{{ rule.time_contains }}", enabled: {{ rule.enabled }}
+        <form method="post" action="/rules/{{ rule.id }}/delete" style="display:inline">
+          <button type="submit">Delete</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section>
+    <h2>Concerts</h2>
+    <form method="get" action="/" class="filter-form">
+      <input type="text" name="q" placeholder="Search text" value="{{ filters.q }}">
+      <select name="source">
+        <option value="">All sources</option>
+        <option value="Elbphilharmonie" {% if filters.source == 'Elbphilharmonie' %}selected{% endif %}>Elbphilharmonie</option>
+        <option value="ProArte" {% if filters.source == 'ProArte' %}selected{% endif %}>ProArte</option>
+      </select>
+      <input type="text" name="date_filter" placeholder="Date contains" value="{{ filters.date_filter }}">
+      <button type="submit">Apply filters</button>
+    </form>
+
+    <table>
+      <thead>
+      <tr>
+        <th>Source</th>
+        <th>Name</th>
+        <th>Program</th>
+        <th>Performers</th>
+        <th>Date</th>
+        <th>Time</th>
+        <th>Link</th>
+      </tr>
+      </thead>
+      <tbody>
+      {% for concert in concerts %}
+      <tr>
+        <td>{{ concert.source }}</td>
+        <td>{{ concert.name }}</td>
+        <td>{{ concert.program }}</td>
+        <td>{{ concert.performers }}</td>
+        <td>{{ concert.date }}</td>
+        <td>{{ concert.time }}</td>
+        <td><a href="{{ concert.source_url }}" target="_blank" rel="noopener">Open</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+</body>
+</html>
