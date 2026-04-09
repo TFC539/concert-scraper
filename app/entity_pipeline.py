@@ -499,6 +499,46 @@ def _resolve_ambiguous_with_llm(
     return selected_id, confidence
 
 
+def _promote_ambiguous_match_if_possible(
+    entity_type: str,
+    raw_text: str,
+    match_result: MatchResult,
+    config: Any | None,
+) -> MatchResult:
+    if match_result.status != "ambiguous":
+        return match_result
+
+    selected_id, llm_confidence = _resolve_ambiguous_with_llm(
+        entity_type=entity_type,
+        raw_text=raw_text,
+        match_result=match_result,
+        config=config,
+    )
+    if selected_id is None:
+        return match_result
+
+    selected_candidate = None
+    for candidate in match_result.candidates:
+        if not isinstance(candidate, dict):
+            continue
+        try:
+            candidate_id = int(candidate.get("id"))
+        except (TypeError, ValueError):
+            continue
+        if candidate_id == selected_id:
+            selected_candidate = candidate
+            break
+    candidates = [selected_candidate] if selected_candidate else match_result.candidates
+    confidence = max(float(match_result.confidence or 0.0), float(llm_confidence or 0.0))
+    return MatchResult(
+        status="matched",
+        entity_id=selected_id,
+        confidence=max(0.0, min(1.0, confidence)),
+        normalized_text=match_result.normalized_text,
+        candidates=candidates,
+    )
+
+
 def process_concert_entity_pipeline(db: Session, concert: Concert) -> PipelineResult:
     logger.info("entity_pipeline_started concert_id=%s source=%s", concert.id, concert.source)
     event = _upsert_event(db, concert)
@@ -598,6 +638,7 @@ def process_concert_entity_pipeline(db: Session, concert: Concert) -> PipelineRe
     venue_text = extracted["v"] or (concert.hall or "")
     if venue_text:
         venue_match = match_venue(db, venue_text)
+        venue_match = _promote_ambiguous_match_if_possible("venue", venue_text, venue_match, config)
         logger.info(
             "entity_match_venue concert_id=%s status=%s confidence=%.3f normalized=%s candidate_count=%s",
             concert.id,
@@ -638,6 +679,7 @@ def process_concert_entity_pipeline(db: Session, concert: Concert) -> PipelineRe
 
     for performer_name in extracted["p"]:
         performer_match = match_performer(db, performer_name)
+        performer_match = _promote_ambiguous_match_if_possible("performer", performer_name, performer_match, config)
         logger.info(
             "entity_match_performer concert_id=%s performer=%s status=%s confidence=%.3f normalized=%s candidate_count=%s",
             concert.id,
@@ -683,6 +725,7 @@ def process_concert_entity_pipeline(db: Session, concert: Concert) -> PipelineRe
         composer = work_payload.get("c", "")
         title = work_payload.get("t", "")
         normalized_work, work_match = match_work(db, composer, title)
+        work_match = _promote_ambiguous_match_if_possible("work", f"{composer} {title}".strip(), work_match, config)
         logger.info(
             "entity_match_work concert_id=%s order=%s composer=%s title=%s status=%s confidence=%.3f normalized=%s candidate_count=%s",
             concert.id,

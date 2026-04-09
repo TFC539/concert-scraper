@@ -54,8 +54,18 @@ def load_openrouter_config(overrides: dict[str, Any] | None = None) -> OpenRoute
 
     timeout_raw = overrides.get("timeout_seconds")
     retries_raw = overrides.get("max_retries")
-    timeout_seconds = int(timeout_raw if timeout_raw is not None else os.getenv("OPENROUTER_TIMEOUT_SECONDS", "40"))
-    max_retries = int(retries_raw if retries_raw is not None else os.getenv("OPENROUTER_MAX_RETRIES", "2"))
+    timeout_value = timeout_raw if timeout_raw is not None else os.getenv("OPENROUTER_TIMEOUT_SECONDS", "40")
+    retries_value = retries_raw if retries_raw is not None else os.getenv("OPENROUTER_MAX_RETRIES", "2")
+    try:
+        timeout_seconds = int(timeout_value)
+    except (TypeError, ValueError):
+        logger.warning("openrouter_config_invalid_timeout value=%s fallback=40", timeout_value)
+        timeout_seconds = 40
+    try:
+        max_retries = int(retries_value)
+    except (TypeError, ValueError):
+        logger.warning("openrouter_config_invalid_max_retries value=%s fallback=2", retries_value)
+        max_retries = 2
     app_name = os.getenv("OPENROUTER_APP_NAME", "concert-scraper").strip() or "concert-scraper"
     app_url = os.getenv("OPENROUTER_APP_URL", "https://localhost").strip() or "https://localhost"
 
