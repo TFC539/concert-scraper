@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .entity_pipeline import process_concert_entity_pipeline
-from .models import AppSettings, Concert, Event, EventPerformer, EventWork, NotificationRule, UnresolvedEntity
+from .models import AppSettings, Concert, Event, EventPerformer, EventWork, NotificationRule, UnresolvedEntity, User
 from .scrapers import scrape_all
 
 
@@ -186,14 +186,19 @@ def should_notify(concert: Concert, rule: NotificationRule) -> bool:
     return True
 
 
-def send_email(settings: AppSettings, concert: Concert, matching_rules: list[NotificationRule]) -> None:
-    if not (settings.sender_email and settings.recipient_email and settings.smtp_host):
+def send_email(
+    settings: AppSettings,
+    recipient_email: str,
+    concert: Concert,
+    matching_rules: list[NotificationRule],
+) -> None:
+    if not (settings.sender_email and recipient_email and settings.smtp_host):
         return
 
     message = EmailMessage()
     message["Subject"] = f"Concert Alert: {concert.name}"
     message["From"] = settings.sender_email
-    message["To"] = settings.recipient_email
+    message["To"] = recipient_email
 
     rule_names = ", ".join(str(rule.id) for rule in matching_rules)
     body = (
@@ -224,7 +229,6 @@ def scrape_and_persist(
     max_total: int | None = None,
 ) -> int:
     settings = get_or_create_settings(db)
-    rules = db.scalars(select(NotificationRule)).all()
     is_initial_import = db.scalar(select(Concert.id).limit(1)) is None
     today = datetime.utcnow().date()
 
@@ -283,7 +287,7 @@ def scrape_and_persist(
                     db.scalar(
                         select(UnresolvedEntity.id)
                         .where(UnresolvedEntity.event_id == existing_event_id)
-                        .where(UnresolvedEntity.status == "open")
+                        .where(UnresolvedEntity.status.in_(["open", "deferred"]))
                         .limit(1)
                     )
                     is not None
@@ -327,13 +331,34 @@ def scrape_and_persist(
         except Exception:
             logger.exception("Entity pipeline failed for new concert id=%s", concert.id)
 
-        if settings.notifications_enabled:
-            matching = [rule for rule in rules if should_notify(concert, rule)]
-            if matching:
+        # SMTP/OpenRouter config is global. Notification subscriptions and rules are per user.
+        if settings.smtp_host and settings.sender_email:
+            subscribed_users = db.scalars(
+                select(User)
+                .where(User.is_active == True)
+                .where(User.notifications_enabled == True)
+            ).all()
+            for user in subscribed_users:
+                recipient_email = (user.notification_email or user.email or "").strip()
+                if not recipient_email:
+                    continue
+
+                user_rules = db.scalars(
+                    select(NotificationRule)
+                    .where(NotificationRule.user_id == user.id)
+                    .where(NotificationRule.enabled == True)
+                ).all()
+                if not user_rules:
+                    continue
+
+                matching = [rule for rule in user_rules if should_notify(concert, rule)]
+                if not matching:
+                    continue
+
                 try:
-                    send_email(settings, concert, matching)
+                    send_email(settings, recipient_email, concert, matching)
                 except Exception:
-                    logger.exception("notification_email_failed concert_id=%s", concert.id)
+                    logger.exception("notification_email_failed concert_id=%s user_id=%s", concert.id, user.id)
 
     db.commit()
     logger.info("scrape_persist_finished inserted=%s", inserted)

@@ -52,16 +52,34 @@ Scraper -> Extraction (OpenRouter) -> Normalization -> Candidate Retrieval -> Ma
 
 Implemented behavior:
 - Deterministic matching first (aliases, normalized forms, fuzzy scoring).
-- Optional LLM-assisted disambiguation for ambiguous matches.
+- Optional LLM-assisted disambiguation for ambiguous matches (assistive only, not a canonical write decision).
 - Unresolved queues with manual resolution actions.
 - Merge suggestions with merge/reject/do-not-merge review actions.
 - Feedback loop updates (alias enrichment + do-not-merge safeguards).
+- Triage buckets for non-safe matches (critical/open and medium/deferred).
+- Proposal-first writes for uncertain entities (no direct canonical auto-create on low confidence).
+- Batch resolution support (apply one decision to similar unresolved entries).
+- Contributor authentication with trust levels (merge review restricted to trusted/verified users).
+- Role-based access: SMTP/OpenRouter/system configuration is admin-only.
+- User-owned notifications: normal accounts can manage their own recipient email, enable/disable alerts, and define personal rules.
+- Admin-only operations: scrape triggers and concert deletion endpoints.
+- Signed-out dashboard scope: Concert Explorer only.
 
 New API surfaces for review workflows:
 - `GET /api/resolution/unresolved`
 - `POST /api/resolution/unresolved/{id}`
 - `GET /api/resolution/merge-suggestions`
 - `POST /api/resolution/merge-suggestions/{id}`
+
+Authentication API surfaces:
+- `POST /api/auth/signup`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+
+Notification profile API surfaces:
+- `GET /api/notifications/profile`
+- `PUT /api/notifications/profile`
 
 Manual scrape and export API surfaces:
 - `POST /api/scrape-now` (supports `sources`, `max_per_source`, `max_total`)

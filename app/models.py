@@ -148,6 +148,9 @@ class UnresolvedEntity(Base):
     normalized_text = Column(String(512), nullable=False, default="")
     candidates_json = Column(JSON, nullable=False, default=list)
     status = Column(String(32), nullable=False, default="open", index=True)
+    triage_bucket = Column(String(16), nullable=False, default="critical", index=True)
+    confidence_score = Column(Float, nullable=False, default=0.0, index=True)
+    review_priority = Column(Integer, nullable=False, default=1000, index=True)
     resolved_entity_id = Column(Integer, nullable=True)
     resolution_action = Column(String(64), nullable=False, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -235,9 +238,35 @@ class NotificationRule(Base):
     __tablename__ = "notification_rules"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     name_contains = Column(String(256), default="")
     performer_contains = Column(String(256), default="")
     program_contains = Column(String(256), default="")
     date_contains = Column(String(64), default="")
     time_contains = Column(String(64), default="")
     enabled = Column(Boolean, default=True)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(64), nullable=False, unique=True, index=True)
+    email = Column(String(256), nullable=False, unique=True, index=True)
+    password_hash = Column(String(256), nullable=False)
+    role = Column(String(32), nullable=False, default="contributor", index=True)
+    trust_level = Column(String(32), nullable=False, default="new", index=True)
+    notifications_enabled = Column(Boolean, nullable=False, default=False)
+    notification_email = Column(String(256), nullable=False, default="")
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token = Column(String(128), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False, index=True)

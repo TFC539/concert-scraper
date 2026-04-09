@@ -7,9 +7,11 @@ const PAGE_CONFIG = [
   { id: "overview", label: "Overview" },
   { id: "scrape", label: "Scrape Control" },
   { id: "concerts", label: "Concert Explorer" },
-  { id: "resolution", label: "Resolution" },
+  { id: "resolution", label: "Triage Dashboard" },
   { id: "rules", label: "Notifications" },
 ];
+
+const AUTH_TOKEN_KEY = "concert.signal.authToken";
 
 const DEFAULT_FILTERS = {
   q: "",
@@ -71,6 +73,11 @@ const emptySettings = {
   openrouter_model: "openai/gpt-4.1-mini",
   openrouter_timeout_seconds: 40,
   openrouter_max_retries: 2,
+};
+
+const emptyNotificationProfile = {
+  notifications_enabled: false,
+  notification_email: "",
 };
 
 const emptyScrapeScope = {
@@ -236,6 +243,11 @@ function normalizeConcertView(concert) {
 
 function App() {
   const [activePage, setActivePage] = useState(pageFromHash(window.location.hash));
+  const [authToken, setAuthToken] = useState(localStorage.getItem(AUTH_TOKEN_KEY) || "");
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authMode, setAuthMode] = useState("login");
+  const [authForm, setAuthForm] = useState({ username: "", email: "", password: "", username_or_email: "" });
+  const [showAuthPanel, setShowAuthPanel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [resolutionLoading, setResolutionLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -249,12 +261,14 @@ function App() {
   const [maybeHiddenCount, setMaybeHiddenCount] = useState(0);
   const [rules, setRules] = useState([]);
   const [settings, setSettings] = useState({ ...emptySettings });
+  const [notificationProfile, setNotificationProfile] = useState({ ...emptyNotificationProfile });
   const [newRule, setNewRule] = useState({ ...emptyRule });
   const [scrapeScope, setScrapeScope] = useState({ ...emptyScrapeScope });
 
   const [unresolvedItems, setUnresolvedItems] = useState([]);
   const [mergeSuggestions, setMergeSuggestions] = useState([]);
   const [newEntityDrafts, setNewEntityDrafts] = useState({});
+  const [applyGloballyFlags, setApplyGloballyFlags] = useState({});
   const [reviewReasons, setReviewReasons] = useState({});
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
@@ -270,6 +284,28 @@ function App() {
     () => mergeSuggestions.filter((item) => item.status === "pending").length,
     [mergeSuggestions]
   );
+  const canManageSystemSettings = useMemo(
+    () => Boolean(currentUser && String(currentUser.role || "") === "admin"),
+    [currentUser]
+  );
+  const canReviewMerges = useMemo(
+    () =>
+      Boolean(
+        currentUser &&
+          (String(currentUser.role || "") === "admin" ||
+            ["trusted", "verified"].includes(String(currentUser.trust_level || "")))
+      ),
+    [currentUser]
+  );
+  const visiblePageConfig = useMemo(() => {
+    if (!currentUser) {
+      return PAGE_CONFIG.filter((page) => page.id === "concerts");
+    }
+    if (canManageSystemSettings) {
+      return PAGE_CONFIG;
+    }
+    return PAGE_CONFIG.filter((page) => page.id !== "scrape");
+  }, [currentUser, canManageSystemSettings]);
 
   const latestFetchLabel = useMemo(() => {
     const latest = concerts.reduce((memo, concert) => {
@@ -322,6 +358,41 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const fallback = !currentUser ? "concerts" : "overview";
+    const isVisible = visiblePageConfig.some((page) => page.id === activePage);
+    if (!isVisible) {
+      setActivePage(fallback);
+      window.location.hash = fallback;
+    }
+  }, [currentUser, activePage, visiblePageConfig]);
+
+  useEffect(() => {
+    if (!authToken) {
+      setCurrentUser(null);
+      setResolutionLoading(false);
+      setUnresolvedItems([]);
+      setMergeSuggestions([]);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const payload = await request("/api/auth/me", { headers: {} });
+        setCurrentUser(payload.user || null);
+        await refreshAll(filters);
+      } catch (_) {
+        // request() already handles notice and token reset on auth failures.
+      }
+    })();
+  }, [authToken]);
+
+  useEffect(() => {
+    if (currentUser) {
+      setShowAuthPanel(false);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
     if (scrapeSources.length === 0) {
       return;
     }
@@ -351,6 +422,10 @@ function App() {
       ...(options.headers || {}),
     };
 
+    if (authToken && !headers.Authorization) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+
     if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
       headers["Content-Type"] = "application/json";
     }
@@ -359,6 +434,15 @@ function App() {
       ...options,
       headers,
     });
+
+    if (response.status === 401) {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      setAuthToken("");
+      setCurrentUser(null);
+      if (!String(path || "").startsWith("/api/auth/")) {
+        setNotice({ type: "error", text: "Your contributor session expired. Please log in again." });
+      }
+    }
 
     if (!response.ok) {
       let message = `Request failed (${response.status})`;
@@ -432,6 +516,7 @@ function App() {
       setMaybeHiddenCount(payload.maybe_hidden_count || 0);
       setRules(payload.rules || []);
       setSettings({ ...emptySettings, ...(payload.settings || {}) });
+      setNotificationProfile({ ...emptyNotificationProfile, ...(payload.notification_profile || {}) });
       setFilterLabels(payload.filter_labels || { performers: {}, works: {}, venues: {} });
     } catch (error) {
       setNotice({ type: "error", text: `Could not load dashboard data: ${error.message}` });
@@ -441,6 +526,13 @@ function App() {
   }
 
   async function loadResolutionData() {
+    if (!authToken) {
+      setUnresolvedItems([]);
+      setMergeSuggestions([]);
+      setResolutionLoading(false);
+      return;
+    }
+
     setResolutionLoading(true);
 
     try {
@@ -485,13 +577,93 @@ function App() {
     await Promise.all([loadDashboard(nextFilters), loadResolutionData()]);
   }
 
+  async function handleAuthSubmit(event) {
+    event.preventDefault();
+    setBusy(true);
+    setNotice(null);
+
+    try {
+      if (authMode === "signup") {
+        const payload = await request("/api/auth/signup", {
+          method: "POST",
+          body: JSON.stringify({
+            username: authForm.username,
+            email: authForm.email,
+            password: authForm.password,
+          }),
+        });
+        const token = String(payload?.token || "").trim();
+        if (!token) {
+          throw new Error("Signup succeeded but no session token was returned.");
+        }
+        localStorage.setItem(AUTH_TOKEN_KEY, token);
+        setAuthToken(token);
+        setCurrentUser(payload.user || null);
+        setAuthForm({ username: "", email: "", password: "", username_or_email: "" });
+        setNotice({ type: "success", text: "Contributor account created and logged in." });
+        await refreshAll(filters);
+      } else {
+        const payload = await request("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({
+            username_or_email: authForm.username_or_email,
+            password: authForm.password,
+          }),
+        });
+        const token = String(payload?.token || "").trim();
+        if (!token) {
+          throw new Error("Login succeeded but no session token was returned.");
+        }
+        localStorage.setItem(AUTH_TOKEN_KEY, token);
+        setAuthToken(token);
+        setCurrentUser(payload.user || null);
+        setAuthForm({ username: "", email: "", password: "", username_or_email: "" });
+        setNotice({ type: "success", text: "Logged in successfully." });
+        await refreshAll(filters);
+      }
+    } catch (error) {
+      setNotice({ type: "error", text: `Authentication failed: ${error.message}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleLogout() {
+    setBusy(true);
+    try {
+      await request("/api/auth/logout", { method: "POST", headers: {} });
+    } catch (_) {
+      // The local session is cleared below regardless of remote state.
+    } finally {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      setAuthToken("");
+      setCurrentUser(null);
+      setBusy(false);
+      setNotice({ type: "success", text: "Logged out." });
+      await loadDashboard(filters);
+    }
+  }
+
   function goToPage(pageId) {
-    if (!isValidPage(pageId)) {
+    const isVisible = visiblePageConfig.some((page) => page.id === pageId);
+    if (!isVisible) {
       return;
     }
 
     window.location.hash = pageId;
     setActivePage(pageId);
+  }
+
+  function goToAuthPanel() {
+    window.location.hash = "concerts";
+    setActivePage("concerts");
+    setShowAuthPanel(true);
+    window.setTimeout(() => {
+      const node = document.getElementById("auth-panel");
+      if (node) {
+        node.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 80);
   }
 
   function toggleScrapeSource(source) {
@@ -538,7 +710,34 @@ function App() {
     }
   }
 
+  async function saveNotificationProfile(event) {
+    event.preventDefault();
+    setBusy(true);
+    setNotice(null);
+
+    try {
+      const payload = await request("/api/notifications/profile", {
+        method: "PUT",
+        body: JSON.stringify({
+          notifications_enabled: Boolean(notificationProfile.notifications_enabled),
+          notification_email: notificationProfile.notification_email || null,
+        }),
+      });
+      setNotificationProfile({ ...emptyNotificationProfile, ...(payload.profile || {}) });
+      setNotice({ type: "success", text: "Notification profile saved." });
+    } catch (error) {
+      setNotice({ type: "error", text: `Notification profile could not be saved: ${error.message}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function runScopedScrape() {
+    if (!canManageSystemSettings) {
+      setNotice({ type: "error", text: "Only admins can run scrapes." });
+      return;
+    }
+
     const selectedSources = scrapeScope.selected_sources.filter((source) => scrapeSources.includes(source));
     if (selectedSources.length === 0) {
       setNotice({ type: "error", text: "Select at least one source before running a scoped scrape." });
@@ -607,6 +806,11 @@ function App() {
   }
 
   async function deleteConcert(concert) {
+    if (!canManageSystemSettings) {
+      setNotice({ type: "error", text: "Only admins can delete concerts." });
+      return;
+    }
+
     const confirmed = window.confirm(`Delete concert \"${concert.name}\"? This cannot be undone.`);
     if (!confirmed) {
       return;
@@ -630,6 +834,11 @@ function App() {
   }
 
   async function deleteFilteredConcerts() {
+    if (!canManageSystemSettings) {
+      setNotice({ type: "error", text: "Only admins can delete concerts." });
+      return;
+    }
+
     const confirmed = window.confirm("Delete all currently filtered concerts? This cannot be undone.");
     if (!confirmed) {
       return;
@@ -662,6 +871,11 @@ function App() {
   }
 
   async function deleteAllConcerts() {
+    if (!canManageSystemSettings) {
+      setNotice({ type: "error", text: "Only admins can delete concerts." });
+      return;
+    }
+
     const confirmed = window.confirm("Delete ALL concerts from the database? This cannot be undone.");
     if (!confirmed) {
       return;
@@ -760,21 +974,30 @@ function App() {
     await loadDashboard(nextFilters);
   }
 
+  function shouldApplyGlobally(itemId) {
+    return Boolean(applyGloballyFlags[itemId]);
+  }
+
   async function resolveWithCandidate(itemId, candidateId) {
     setBusy(true);
     setNotice(null);
 
     try {
-      await request(`/api/resolution/unresolved/${itemId}`, {
+      const payload = await request(`/api/resolution/unresolved/${itemId}`, {
         method: "POST",
         body: JSON.stringify({
           action: "accept_candidate",
           candidate_id: candidateId,
           value: "",
           reason: "",
+          apply_globally: shouldApplyGlobally(itemId),
         }),
       });
-      setNotice({ type: "success", text: `Accepted candidate #${candidateId}.` });
+      const batchCount = Number(payload?.batch_count || 1);
+      setNotice({
+        type: "success",
+        text: `Accepted candidate #${candidateId}${batchCount > 1 ? ` for ${batchCount} entries` : ""}.`,
+      });
       await refreshAll(filters);
     } catch (error) {
       setNotice({ type: "error", text: `Could not accept candidate: ${error.message}` });
@@ -791,17 +1014,22 @@ function App() {
     setNotice(null);
 
     try {
-      await request(`/api/resolution/unresolved/${item.id}`, {
+      const payload = await request(`/api/resolution/unresolved/${item.id}`, {
         method: "POST",
         body: JSON.stringify({
           action: "create_new",
           candidate_id: null,
           value,
           reason: "",
+          apply_globally: shouldApplyGlobally(item.id),
         }),
       });
       setNewEntityDrafts((previous) => ({ ...previous, [item.id]: "" }));
-      setNotice({ type: "success", text: `Created new ${item.entity_type} entity.` });
+      const batchCount = Number(payload?.batch_count || 1);
+      setNotice({
+        type: "success",
+        text: `Created new ${item.entity_type} entity${batchCount > 1 ? ` and applied to ${batchCount} entries` : ""}.`,
+      });
       await refreshAll(filters);
     } catch (error) {
       setNotice({ type: "error", text: `Could not create entity: ${error.message}` });
@@ -810,7 +1038,7 @@ function App() {
     }
   }
 
-  async function markDistinct(item) {
+  async function rejectUnresolved(item) {
     const topCandidate = item.candidates && item.candidates.length > 0 ? item.candidates[0].id : null;
     const reasonKey = `u-${item.id}`;
     const reason = (reviewReasons[reasonKey] || "").trim();
@@ -819,20 +1047,53 @@ function App() {
     setNotice(null);
 
     try {
-      await request(`/api/resolution/unresolved/${item.id}`, {
+      const payload = await request(`/api/resolution/unresolved/${item.id}`, {
         method: "POST",
         body: JSON.stringify({
-          action: "mark_distinct",
+          action: "reject",
           candidate_id: topCandidate,
           value: "",
           reason,
+          apply_globally: shouldApplyGlobally(item.id),
         }),
       });
       setReviewReasons((previous) => ({ ...previous, [reasonKey]: "" }));
-      setNotice({ type: "success", text: `Marked unresolved item #${item.id} as distinct.` });
+      const batchCount = Number(payload?.batch_count || 1);
+      setNotice({
+        type: "success",
+        text: `Rejected unresolved item #${item.id}${batchCount > 1 ? ` across ${batchCount} entries` : ""}.`,
+      });
       await refreshAll(filters);
     } catch (error) {
-      setNotice({ type: "error", text: `Could not mark distinct: ${error.message}` });
+      setNotice({ type: "error", text: `Could not reject unresolved item: ${error.message}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function skipUnresolved(item) {
+    setBusy(true);
+    setNotice(null);
+
+    try {
+      const payload = await request(`/api/resolution/unresolved/${item.id}`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "skip",
+          candidate_id: null,
+          value: "",
+          reason: "",
+          apply_globally: shouldApplyGlobally(item.id),
+        }),
+      });
+      const batchCount = Number(payload?.batch_count || 1);
+      setNotice({
+        type: "success",
+        text: `Skipped unresolved item #${item.id}${batchCount > 1 ? ` for ${batchCount} entries` : ""}.`,
+      });
+      await refreshAll(filters);
+    } catch (error) {
+      setNotice({ type: "error", text: `Could not skip unresolved item: ${error.message}` });
     } finally {
       setBusy(false);
     }
@@ -871,6 +1132,130 @@ function App() {
     }
   }
 
+  function renderAuthPanel() {
+    if (currentUser) {
+      return h(
+        "section",
+        { className: "panel", id: "auth-panel" },
+        h(
+          "div",
+          { className: "panel-head" },
+          h("h2", null, "Contributor Access"),
+          h("p", null, "Signed-in reviewer account")
+        ),
+        h(
+          "div",
+          { className: "stack" },
+          h("p", { className: "muted" }, `User: ${currentUser.username}`),
+          h("p", { className: "muted" }, `Role: ${currentUser.role || "contributor"}`),
+          h("p", { className: "muted" }, `Trust level: ${currentUser.trust_level}`),
+          h(
+            "div",
+            { className: "actions" },
+            h(
+              "button",
+              {
+                className: "btn-ghost",
+                type: "button",
+                disabled: busy,
+                onClick: handleLogout,
+              },
+              "Log out"
+            )
+          )
+        )
+      );
+    }
+
+    return h(
+      "section",
+      { className: "panel", id: "auth-panel" },
+      h(
+        "div",
+        { className: "panel-head" },
+        h("h2", null, "Contributor Login"),
+        h("p", null, "Review actions require an authenticated account.")
+      ),
+      h(
+        "form",
+        { className: "stack", onSubmit: handleAuthSubmit },
+        authMode === "signup"
+          ? h(
+              "div",
+              { className: "fields" },
+              field(
+                "Username",
+                h("input", {
+                  type: "text",
+                  value: authForm.username,
+                  onChange: (event) => setAuthForm({ ...authForm, username: event.target.value }),
+                  required: true,
+                })
+              ),
+              field(
+                "Email",
+                h("input", {
+                  type: "email",
+                  value: authForm.email,
+                  onChange: (event) => setAuthForm({ ...authForm, email: event.target.value }),
+                  required: true,
+                })
+              ),
+              field(
+                "Password",
+                h("input", {
+                  type: "password",
+                  value: authForm.password,
+                  onChange: (event) => setAuthForm({ ...authForm, password: event.target.value }),
+                  required: true,
+                  minLength: 10,
+                })
+              )
+            )
+          : h(
+              "div",
+              { className: "fields" },
+              field(
+                "Username or email",
+                h("input", {
+                  type: "text",
+                  value: authForm.username_or_email,
+                  onChange: (event) => setAuthForm({ ...authForm, username_or_email: event.target.value }),
+                  required: true,
+                })
+              ),
+              field(
+                "Password",
+                h("input", {
+                  type: "password",
+                  value: authForm.password,
+                  onChange: (event) => setAuthForm({ ...authForm, password: event.target.value }),
+                  required: true,
+                })
+              )
+            ),
+        h(
+          "div",
+          { className: "actions" },
+          h(
+            "button",
+            { className: "btn-primary", type: "submit", disabled: busy },
+            authMode === "signup" ? "Create account" : "Log in"
+          ),
+          h(
+            "button",
+            {
+              className: "btn-ghost",
+              type: "button",
+              onClick: () => setAuthMode(authMode === "signup" ? "login" : "signup"),
+            },
+            authMode === "signup" ? "Use existing account" : "Create account"
+          )
+        )
+      )
+    );
+  }
+
   function renderMetricsSection() {
     return h(
       "section",
@@ -881,13 +1266,31 @@ function App() {
       metricCard("Rules", String(rules.length), `${activeRuleCount} enabled`),
       metricCard(
         "Notifications",
-        settings.notifications_enabled ? "Enabled" : "Disabled",
-        settings.recipient_email ? `To ${settings.recipient_email}` : "Recipient not configured"
+        notificationProfile.notifications_enabled ? "Enabled" : "Disabled",
+        notificationProfile.notification_email ? `To ${notificationProfile.notification_email}` : "Recipient not configured"
       )
     );
   }
 
   function renderSystemSettingsPanel() {
+    if (!canManageSystemSettings) {
+      return h(
+        "section",
+        { className: "panel" },
+        h(
+          "div",
+          { className: "panel-head" },
+          h("h2", null, "System Settings"),
+          h("p", null, "Admin-only area")
+        ),
+        h(
+          "p",
+          { className: "muted" },
+          "SMTP and OpenRouter configuration is restricted to admin accounts."
+        )
+      );
+    }
+
     return h(
       "section",
       { className: "panel" },
@@ -895,7 +1298,7 @@ function App() {
         "div",
         { className: "panel-head" },
         h("h2", null, "System Settings"),
-          h("p", null, "Configure scheduler cadence, OpenRouter extraction, and SMTP notifications.")
+          h("p", null, "Configure scheduler cadence, OpenRouter extraction, and SMTP delivery.")
       ),
       h(
         "form",
@@ -953,14 +1356,6 @@ function App() {
             })
           ),
           field(
-            "Recipient email",
-            h("input", {
-              type: "email",
-              value: settings.recipient_email,
-              onChange: (event) => setSettings({ ...settings, recipient_email: event.target.value }),
-            })
-          ),
-          field(
             "OpenRouter API key",
             h("input", {
               type: "password",
@@ -995,16 +1390,6 @@ function App() {
               onChange: (event) => setSettings({ ...settings, openrouter_max_retries: event.target.value }),
             })
           )
-        ),
-        h(
-          "label",
-          { className: "check" },
-          h("input", {
-            type: "checkbox",
-            checked: settings.notifications_enabled,
-            onChange: (event) => setSettings({ ...settings, notifications_enabled: event.target.checked }),
-          }),
-          "Enable email notifications"
         ),
         h(
           "div",
@@ -1253,15 +1638,15 @@ function App() {
       h(
         "div",
         { className: "panel-head" },
-        h("h2", null, "Unresolved Review"),
-        h("p", null, "Accept candidates, create entities, or mark items as distinct.")
+        h("h2", null, "Triage Queue"),
+        h("p", null, "Sorted by lowest confidence first. Resolve now, skip for later, or reject.")
       ),
       h(
         "p",
         { className: "muted" },
         resolutionLoading
           ? "Loading unresolved queue..."
-          : `${unresolvedItems.length} unresolved item${unresolvedItems.length === 1 ? "" : "s"}`
+          : `${unresolvedItems.length} triage item${unresolvedItems.length === 1 ? "" : "s"}`
       ),
       h(
         "ul",
@@ -1277,15 +1662,41 @@ function App() {
                 h(
                   "div",
                   { className: "review-header" },
-                  h("span", { className: `type-pill ${item.entity_type}` }, (item.entity_type || "unknown").toUpperCase()),
+                  h(
+                    "span",
+                    { className: `type-pill ${item.entity_type}` },
+                    `${(item.entity_type || "unknown").toUpperCase()} · ${(item.triage_bucket || "critical").toUpperCase()}`
+                  ),
                   h(
                     "span",
                     { className: "rule-tag" },
-                    item.event_date ? `${item.event_date}` : `Event #${item.event_id}`
+                    `${Math.round((item.confidence_score || 0) * 100)}% confidence`
                   )
                 ),
                 h("div", { className: "review-raw" }, item.raw_text || "(empty input)"),
                 item.event_title && h("div", { className: "muted" }, item.event_title),
+                h(
+                  "div",
+                  { className: "muted" },
+                  `${item.event_date ? item.event_date : `Event #${item.event_id}`}${
+                    item.source ? ` · ${item.source}` : ""
+                  }`
+                ),
+                item.source_url
+                  ? h(
+                      "div",
+                      { className: "review-links" },
+                      h(
+                        "a",
+                        {
+                          href: item.source_url,
+                          target: "_blank",
+                          rel: "noopener noreferrer",
+                        },
+                        "Open source"
+                      )
+                    )
+                  : null,
                 h(
                   "div",
                   { className: "review-candidates" },
@@ -1314,6 +1725,17 @@ function App() {
                       )
                 ),
                 h(
+                  "label",
+                  { className: "check" },
+                  h("input", {
+                    type: "checkbox",
+                    checked: Boolean(applyGloballyFlags[item.id]),
+                    onChange: (event) =>
+                      setApplyGloballyFlags((previous) => ({ ...previous, [item.id]: event.target.checked })),
+                  }),
+                  "Apply decision to all similar entries"
+                ),
+                h(
                   "div",
                   { className: "inline-actions" },
                   h("input", {
@@ -1339,7 +1761,7 @@ function App() {
                   { className: "inline-actions" },
                   h("input", {
                     type: "text",
-                    placeholder: "Reason for mark_distinct (optional)",
+                    placeholder: "Reason for reject (optional)",
                     value: reviewReasons[`u-${item.id}`] || "",
                     onChange: (event) =>
                       setReviewReasons((previous) => ({ ...previous, [`u-${item.id}`]: event.target.value })),
@@ -1347,12 +1769,22 @@ function App() {
                   h(
                     "button",
                     {
+                      className: "btn-danger small-btn",
+                      type: "button",
+                      disabled: busy,
+                      onClick: () => rejectUnresolved(item),
+                    },
+                    "Reject"
+                  ),
+                  h(
+                    "button",
+                    {
                       className: "btn-ghost small-btn",
                       type: "button",
                       disabled: busy,
-                      onClick: () => markDistinct(item),
+                      onClick: () => skipUnresolved(item),
                     },
-                    "Mark distinct"
+                    "Skip"
                   )
                 )
               )
@@ -1378,6 +1810,12 @@ function App() {
           ? "Loading merge suggestions..."
           : `${mergeSuggestions.length} pending suggestion${mergeSuggestions.length === 1 ? "" : "s"}`
       ),
+      !canReviewMerges &&
+        h(
+          "p",
+          { className: "muted" },
+          "Merge decisions require a trusted or verified reviewer account."
+        ),
       h(
         "ul",
         { className: "review-list" },
@@ -1400,6 +1838,13 @@ function App() {
                   { className: "review-raw" },
                   `${item.candidate_a_label || `ID ${item.candidate_a_id}`} ↔ ${
                     item.candidate_b_label || `ID ${item.candidate_b_id}`
+                  }`
+                ),
+                h(
+                  "div",
+                  { className: "muted" },
+                  `AI confidence: ${Math.round((item.confidence || 0) * 100)}%${
+                    item.llm_assessment ? ` · ${item.llm_assessment}` : ""
                   }`
                 ),
                 h(
@@ -1448,7 +1893,7 @@ function App() {
                     {
                       className: "btn-primary small-btn",
                       type: "button",
-                      disabled: busy,
+                      disabled: busy || !canReviewMerges,
                       onClick: () => updateMergeSuggestion(item, "merge"),
                     },
                     "Merge"
@@ -1458,7 +1903,7 @@ function App() {
                     {
                       className: "btn-ghost small-btn",
                       type: "button",
-                      disabled: busy,
+                      disabled: busy || !canReviewMerges,
                       onClick: () => updateMergeSuggestion(item, "reject"),
                     },
                     "Reject"
@@ -1468,7 +1913,7 @@ function App() {
                     {
                       className: "btn-danger small-btn",
                       type: "button",
-                      disabled: busy,
+                      disabled: busy || !canReviewMerges,
                       onClick: () => updateMergeSuggestion(item, "do_not_merge"),
                     },
                     "Do not merge"
@@ -1830,26 +2275,30 @@ function App() {
             },
             dumping ? "Dumping..." : "Dump current concerts"
           ),
-          h(
-            "button",
-            {
-              className: "btn-danger",
-              type: "button",
-              disabled: busy,
-              onClick: deleteFilteredConcerts,
-            },
-            busy ? "Deleting filtered..." : "Delete filtered concerts"
-          ),
-          h(
-            "button",
-            {
-              className: "btn-danger",
-              type: "button",
-              disabled: busy,
-              onClick: deleteAllConcerts,
-            },
-            busy ? "Deleting all..." : "Delete ALL concerts"
-          )
+          canManageSystemSettings
+            ? h(
+                "button",
+                {
+                  className: "btn-danger",
+                  type: "button",
+                  disabled: busy,
+                  onClick: deleteFilteredConcerts,
+                },
+                busy ? "Deleting filtered..." : "Delete filtered concerts"
+              )
+            : null,
+          canManageSystemSettings
+            ? h(
+                "button",
+                {
+                  className: "btn-danger",
+                  type: "button",
+                  disabled: busy,
+                  onClick: deleteAllConcerts,
+                },
+                busy ? "Deleting all..." : "Delete ALL concerts"
+              )
+            : null
         )
       ),
       h(
@@ -1898,13 +2347,30 @@ function App() {
                     h(
                       "button",
                       {
-                        className: "btn-danger small-btn",
+                        className: "btn-ghost small-btn",
                         type: "button",
-                        disabled: busy,
-                        onClick: () => deleteConcert(concert),
+                        onClick: () => {
+                          const subject = encodeURIComponent("Concert data issue report");
+                          const body = encodeURIComponent(
+                            `Concert ID: ${concert.id}\nSource: ${concert.source}\nTitle: ${view.title || concert.name}\nURL: ${concert.source_url}\n\nIssue description:`
+                          );
+                          window.location.href = `mailto:?subject=${subject}&body=${body}`;
+                        },
                       },
-                      "Delete"
-                    )
+                      "Report issue"
+                    ),
+                    canManageSystemSettings
+                      ? h(
+                          "button",
+                          {
+                            className: "btn-danger small-btn",
+                            type: "button",
+                            disabled: busy,
+                            onClick: () => deleteConcert(concert),
+                          },
+                          "Delete"
+                        )
+                      : null
                   )
                 ),
                 h("h3", { className: "concert-title" }, view.title || concert.name || "Untitled concert"),
@@ -2094,16 +2560,18 @@ function App() {
           h(
             "div",
             { className: "actions" },
-            h(
-              "button",
-              {
-                className: "btn-neutral",
-                type: "button",
-                disabled: busy,
-                onClick: runScopedScrape,
-              },
-              busy ? "Running scoped scrape..." : "Run scoped scrape"
-            ),
+            canManageSystemSettings
+              ? h(
+                  "button",
+                  {
+                    className: "btn-neutral",
+                    type: "button",
+                    disabled: busy,
+                    onClick: runScopedScrape,
+                  },
+                  busy ? "Running scoped scrape..." : "Run scoped scrape"
+                )
+              : null,
             h(
               "button",
               {
@@ -2118,15 +2586,17 @@ function App() {
           h(
             "div",
             { className: "actions" },
-            h(
-              "button",
-              {
-                className: "btn-ghost",
-                type: "button",
-                onClick: () => goToPage("scrape"),
-              },
-              "Open scrape controls"
-            ),
+            canManageSystemSettings
+              ? h(
+                  "button",
+                  {
+                    className: "btn-ghost",
+                    type: "button",
+                    onClick: () => goToPage("scrape"),
+                  },
+                  "Open scrape controls"
+                )
+              : null,
             h(
               "button",
               {
@@ -2148,7 +2618,8 @@ function App() {
           )
         ),
         renderRecentConcertsPanel()
-      )
+      ),
+      renderAuthPanel()
     );
   }
 
@@ -2166,6 +2637,29 @@ function App() {
   }
 
   function renderResolutionPage() {
+    if (!currentUser) {
+      return h(
+        "div",
+        { className: "page-grid-two" },
+        renderAuthPanel(),
+        h(
+          "section",
+          { className: "panel" },
+          h(
+            "div",
+            { className: "panel-head" },
+            h("h2", null, "Reviewer Access Required"),
+            h("p", null, "Log in to work through triage and proposal queues.")
+          ),
+          h(
+            "p",
+            { className: "muted" },
+            "The contributor workflow includes approve, reject, skip, and batch-apply decisions."
+          )
+        )
+      );
+    }
+
     return h(
       "div",
       { className: "page-grid-two" },
@@ -2175,6 +2669,24 @@ function App() {
   }
 
   function renderRulesPage() {
+    if (!currentUser) {
+      return h(
+        "div",
+        { className: "page-grid-two" },
+        renderAuthPanel(),
+        h(
+          "section",
+          { className: "panel" },
+          h(
+            "div",
+            { className: "panel-head" },
+            h("h2", null, "Notification Access Required"),
+            h("p", null, "Log in to create your own alert rules and delivery settings.")
+          )
+        )
+      );
+    }
+
     return h(
       "div",
       { className: "page-grid-two" },
@@ -2185,27 +2697,48 @@ function App() {
         h(
           "div",
           { className: "panel-head" },
-          h("h2", null, "Notification Status"),
-          h("p", null, "Current email delivery configuration snapshot.")
+          h("h2", null, "My Notification Profile"),
+          h("p", null, "Configure delivery destination and enable or disable your personal alerts.")
         ),
         h(
-          "div",
-          { className: "stack" },
-          h("p", { className: "muted" }, `Notifications: ${settings.notifications_enabled ? "enabled" : "disabled"}`),
-          h("p", { className: "muted" }, `SMTP host: ${display(settings.smtp_host)}`),
-          h("p", { className: "muted" }, `Sender: ${display(settings.sender_email)}`),
-          h("p", { className: "muted" }, `Recipient: ${display(settings.recipient_email)}`),
+          "form",
+          { className: "stack", onSubmit: saveNotificationProfile },
+          field(
+            "Notification email",
+            h("input", {
+              type: "email",
+              value: notificationProfile.notification_email,
+              onChange: (event) =>
+                setNotificationProfile({ ...notificationProfile, notification_email: event.target.value }),
+            })
+          ),
+          h(
+            "label",
+            { className: "check" },
+            h("input", {
+              type: "checkbox",
+              checked: notificationProfile.notifications_enabled,
+              onChange: (event) =>
+                setNotificationProfile({ ...notificationProfile, notifications_enabled: event.target.checked }),
+            }),
+            "Enable my notifications"
+          ),
+          h(
+            "p",
+            { className: "muted" },
+            "Rules on this page apply only to your account."
+          ),
           h(
             "div",
             { className: "actions" },
             h(
               "button",
               {
-                className: "btn-ghost",
-                type: "button",
-                onClick: () => goToPage("scrape"),
+                className: "btn-primary",
+                type: "submit",
+                disabled: busy,
               },
-              "Edit system settings"
+              busy ? "Saving..." : "Save notification profile"
             )
           )
         )
@@ -2214,6 +2747,9 @@ function App() {
   }
 
   function renderActivePage() {
+    if (!currentUser) {
+      return renderConcertsPage();
+    }
     if (activePage === "scrape") {
       return renderScrapePage();
     }
@@ -2250,20 +2786,29 @@ function App() {
         "div",
         { className: "status-stack" },
         h("span", { className: "status-badge" }, `${activeRuleCount} active rules`),
+        h(
+          "span",
+          { className: "status-badge small-badge" },
+          currentUser
+            ? `${String(currentUser.role || "contributor").toUpperCase()} · ${currentUser.trust_level}`
+            : "Contributor: signed out"
+        ),
         h("div", { className: "status-note" }, `Latest sync: ${latestFetchLabel}`),
         h(
           "div",
           { className: "status-actions" },
-          h(
-            "button",
-            {
-              className: "btn-neutral",
-              type: "button",
-              disabled: busy,
-              onClick: runScopedScrape,
-            },
-            busy ? "Running scrape..." : "Run scoped scrape"
-          ),
+          canManageSystemSettings
+            ? h(
+                "button",
+                {
+                  className: "btn-neutral",
+                  type: "button",
+                  disabled: busy,
+                  onClick: runScopedScrape,
+                },
+                busy ? "Running scrape..." : "Run scoped scrape"
+              )
+            : null,
           h(
             "button",
             {
@@ -2273,17 +2818,38 @@ function App() {
               onClick: dumpCurrentConcerts,
             },
             dumping ? "Dumping..." : "Dump concerts"
-          )
+          ),
+          !currentUser
+            ? h(
+                "button",
+                {
+                  className: "btn-ghost",
+                  type: "button",
+                  onClick: () => {
+                    if (showAuthPanel) {
+                      setShowAuthPanel(false);
+                      return;
+                    }
+                    goToAuthPanel();
+                  },
+                },
+                showAuthPanel ? "Hide sign in" : "Sign in / Sign up"
+              )
+            : null
         )
       )
     ),
 
     notice && h("div", { className: `notice ${notice.type}` }, notice.text),
 
+    !currentUser && showAuthPanel
+      ? h("div", { className: "page-stack" }, renderAuthPanel())
+      : null,
+
     h(
       "nav",
       { className: "page-nav", "aria-label": "Dashboard pages" },
-      PAGE_CONFIG.map((page) =>
+      visiblePageConfig.map((page) =>
         h(
           "button",
           {

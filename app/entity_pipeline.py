@@ -195,6 +195,10 @@ def _create_unresolved(
     raw_text: str,
     normalized_text: str,
     candidates: list[dict[str, Any]],
+    confidence_score: float,
+    triage_bucket: str,
+    status: str,
+    review_priority: int,
 ) -> None:
     logger.warning(
         "entity_unresolved_created event_id=%s entity_type=%s raw_text_preview=%s normalized_text=%s candidate_count=%s",
@@ -210,7 +214,10 @@ def _create_unresolved(
         raw_text=raw_text,
         normalized_text=normalized_text,
         candidates_json=candidates,
-        status="open",
+        status=status,
+        triage_bucket=triage_bucket,
+        confidence_score=max(0.0, min(1.0, float(confidence_score or 0.0))),
+        review_priority=max(1, int(review_priority or 1000)),
     )
     db.add(unresolved)
     db.flush()
@@ -224,6 +231,16 @@ def _create_unresolved(
             status="pending",
         )
     )
+
+
+def _triage_from_match_result(status: str, confidence_score: float) -> tuple[str, str, int]:
+    confidence = max(0.0, min(1.0, float(confidence_score or 0.0)))
+    if status == "ambiguous" or confidence >= 0.9:
+        review_priority = 500 + int((1.0 - confidence) * 300)
+        return "medium", "deferred", review_priority
+
+    review_priority = 100 + int((1.0 - confidence) * 900)
+    return "critical", "open", review_priority
 
 
 def _maybe_add_merge_suggestion(
@@ -594,38 +611,24 @@ def process_concert_entity_pipeline(db: Session, concert: Concert) -> PipelineRe
             add_venue_alias(db, venue_match.entity_id, venue_text)
             _queue_venue_merge_suggestions(db, venue_match.entity_id)
         else:
-            resolved_id, _ = _resolve_ambiguous_with_llm("venue", venue_text, venue_match, config)
-            if resolved_id is not None:
-                event.venue_id = resolved_id
-                add_venue_alias(db, resolved_id, venue_text)
-                _queue_venue_merge_suggestions(db, resolved_id)
-            elif venue_match.status == "unresolved":
-                created_venue = create_venue(db, venue_text)
-                if created_venue:
-                    event.venue_id = created_venue.id
-                    _queue_venue_merge_suggestions(db, created_venue.id)
-                else:
-                    event.venue_id = None
-                    unresolved_count += 1
-                    _create_unresolved(
-                        db,
-                        event_id=event.id,
-                        entity_type="venue",
-                        raw_text=venue_text,
-                        normalized_text=venue_match.normalized_text,
-                        candidates=venue_match.candidates,
-                    )
-            else:
-                event.venue_id = None
-                unresolved_count += 1
-                _create_unresolved(
-                    db,
-                    event_id=event.id,
-                    entity_type="venue",
-                    raw_text=venue_text,
-                    normalized_text=venue_match.normalized_text,
-                    candidates=venue_match.candidates,
-                )
+            triage_bucket, unresolved_status, review_priority = _triage_from_match_result(
+                venue_match.status,
+                venue_match.confidence,
+            )
+            event.venue_id = None
+            unresolved_count += 1
+            _create_unresolved(
+                db,
+                event_id=event.id,
+                entity_type="venue",
+                raw_text=venue_text,
+                normalized_text=venue_match.normalized_text,
+                candidates=venue_match.candidates,
+                confidence_score=venue_match.confidence,
+                triage_bucket=triage_bucket,
+                status=unresolved_status,
+                review_priority=review_priority,
+            )
 
     if extracted["d"]:
         event.date = extracted["d"]
@@ -658,36 +661,10 @@ def process_concert_entity_pipeline(db: Session, concert: Concert) -> PipelineRe
             _queue_performer_merge_suggestions(db, performer_match.entity_id)
             continue
 
-        resolved_id, llm_confidence = _resolve_ambiguous_with_llm("performer", performer_name, performer_match, config)
-        if resolved_id is not None:
-            db.add(
-                EventPerformer(
-                    event_id=event.id,
-                    performer_id=resolved_id,
-                    role="performer",
-                    confidence=max(performer_match.confidence, llm_confidence),
-                )
-            )
-            matched_performers += 1
-            add_performer_alias(db, resolved_id, performer_name)
-            _queue_performer_merge_suggestions(db, resolved_id)
-            continue
-
-        if performer_match.status == "unresolved":
-            created_performer = create_performer(db, performer_name)
-            if created_performer:
-                db.add(
-                    EventPerformer(
-                        event_id=event.id,
-                        performer_id=created_performer.id,
-                        role="performer",
-                        confidence=max(performer_match.confidence, 0.72),
-                    )
-                )
-                matched_performers += 1
-                _queue_performer_merge_suggestions(db, created_performer.id)
-                continue
-
+        triage_bucket, unresolved_status, review_priority = _triage_from_match_result(
+            performer_match.status,
+            performer_match.confidence,
+        )
         unresolved_count += 1
         _create_unresolved(
             db,
@@ -696,6 +673,10 @@ def process_concert_entity_pipeline(db: Session, concert: Concert) -> PipelineRe
             raw_text=performer_name,
             normalized_text=performer_match.normalized_text,
             candidates=performer_match.candidates,
+            confidence_score=performer_match.confidence,
+            triage_bucket=triage_bucket,
+            status=unresolved_status,
+            review_priority=review_priority,
         )
 
     for order, work_payload in enumerate(extracted["w"], start=1):
@@ -726,33 +707,10 @@ def process_concert_entity_pipeline(db: Session, concert: Concert) -> PipelineRe
             continue
 
         raw_text = f"{composer} {title}".strip()
-        resolved_id, llm_confidence = _resolve_ambiguous_with_llm("work", raw_text, work_match, config)
-        if resolved_id is not None:
-            db.add(
-                EventWork(
-                    event_id=event.id,
-                    work_id=resolved_id,
-                    sequence_order=order,
-                    confidence=max(work_match.confidence, llm_confidence),
-                )
-            )
-            matched_works += 1
-            continue
-
-        if work_match.status == "unresolved":
-            created_work = create_work(db, normalized_work)
-            if created_work:
-                db.add(
-                    EventWork(
-                        event_id=event.id,
-                        work_id=created_work.id,
-                        sequence_order=order,
-                        confidence=max(work_match.confidence, 0.72),
-                    )
-                )
-                matched_works += 1
-                continue
-
+        triage_bucket, unresolved_status, review_priority = _triage_from_match_result(
+            work_match.status,
+            work_match.confidence,
+        )
         unresolved_count += 1
         _create_unresolved(
             db,
@@ -761,6 +719,10 @@ def process_concert_entity_pipeline(db: Session, concert: Concert) -> PipelineRe
             raw_text=raw_text,
             normalized_text=work_match.normalized_text or pretty_label_for_unresolved("work", raw_text),
             candidates=work_match.candidates,
+            confidence_score=work_match.confidence,
+            triage_bucket=triage_bucket,
+            status=unresolved_status,
+            review_priority=review_priority,
         )
 
     db.add(event)
@@ -824,6 +786,8 @@ def resolve_unresolved_with_existing(db: Session, unresolved: UnresolvedEntity, 
     unresolved.status = "resolved"
     unresolved.resolution_action = "accept_candidate"
     unresolved.resolved_entity_id = selected_entity_id
+    unresolved.triage_bucket = "safe"
+    unresolved.review_priority = 9999
     db.add(unresolved)
 
 

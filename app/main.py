@@ -15,6 +15,19 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
 
+from .auth import (
+    choose_initial_role,
+    choose_initial_trust_level,
+    create_session,
+    get_current_user,
+    hash_password,
+    require_admin,
+    require_contributor,
+    require_trusted,
+    resolve_user_from_request,
+    session_token_from_request,
+    verify_password,
+)
 from .database import Base, SessionLocal, engine, ensure_schema, get_db
 from .entity_pipeline import (
     merge_entities,
@@ -35,6 +48,8 @@ from .models import (
     NotificationRule,
     Performer,
     PerformerAlias,
+    User,
+    UserSession,
     UnresolvedEntity,
     Venue,
     VenueAlias,
@@ -44,9 +59,12 @@ from .models import (
 from .scrapers import list_scrape_sources
 from .scheduler import schedule_scraping, scrape_job
 from .schemas import (
+    LoginRequest,
+    NotificationProfileUpdate,
     ResolveUnresolvedRequest,
     RuleCreate,
     ScrapeNowRequest,
+    SignupRequest,
     SettingsUpdate,
     UpdateMergeSuggestionRequest,
 )
@@ -206,6 +224,12 @@ def _rule_to_dict(rule: NotificationRule) -> dict:
 def _settings_to_dict(settings) -> dict:
     return {
         "scrape_interval_minutes": settings.scrape_interval_minutes,
+    }
+
+
+def _settings_to_admin_dict(settings) -> dict:
+    return {
+        "scrape_interval_minutes": settings.scrape_interval_minutes,
         "smtp_host": settings.smtp_host or "",
         "smtp_port": settings.smtp_port,
         "smtp_username": settings.smtp_username or "",
@@ -218,6 +242,43 @@ def _settings_to_dict(settings) -> dict:
         "openrouter_timeout_seconds": int(settings.openrouter_timeout_seconds or 40),
         "openrouter_max_retries": int(settings.openrouter_max_retries or 2),
     }
+
+
+def _notification_profile_to_dict(user: User) -> dict:
+    notification_email = (user.notification_email or "").strip() or (user.email or "").strip()
+    return {
+        "notifications_enabled": bool(user.notifications_enabled),
+        "notification_email": notification_email,
+    }
+
+
+def _user_to_dict(user: User) -> dict:
+    return {
+        "id": int(user.id),
+        "username": user.username,
+        "email": user.email,
+        "role": user.role,
+        "trust_level": user.trust_level,
+        "notifications_enabled": bool(user.notifications_enabled),
+        "notification_email": (user.notification_email or "").strip() or (user.email or "").strip(),
+        "is_active": bool(user.is_active),
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    }
+
+
+def _similar_unresolved_query(base_item: UnresolvedEntity):
+    match_value = (base_item.normalized_text or "").strip() or (base_item.raw_text or "").strip()
+    query = (
+        select(UnresolvedEntity)
+        .where(UnresolvedEntity.id != base_item.id)
+        .where(UnresolvedEntity.entity_type == base_item.entity_type)
+        .where(UnresolvedEntity.status.in_(["open", "deferred"]))
+    )
+    if (base_item.normalized_text or "").strip():
+        query = query.where(UnresolvedEntity.normalized_text == match_value)
+    else:
+        query = query.where(UnresolvedEntity.raw_text == match_value)
+    return query
 
 
 def _normalize_scrape_sources(raw_sources: list[str] | None) -> tuple[list[str], list[str]]:
@@ -359,7 +420,7 @@ def _build_normalized_concert_lookup(db: Session, concerts: list[Concert]) -> di
     unresolved_rows = db.execute(
         select(UnresolvedEntity.event_id, UnresolvedEntity.entity_type)
         .where(UnresolvedEntity.event_id.in_(event_ids))
-        .where(UnresolvedEntity.status == "open")
+        .where(UnresolvedEntity.status.in_(["open", "deferred"]))
     ).all()
 
     unresolved_by_event: dict[int, dict[str, int]] = defaultdict(lambda: {"performer": 0, "venue": 0, "work": 0})
@@ -430,17 +491,23 @@ def _hydrate_candidates(db: Session, entity_type: str, candidates: list[dict]) -
 
 def _unresolved_to_dict(db: Session, item: UnresolvedEntity) -> dict:
     event = db.get(Event, item.event_id)
+    concert = db.get(Concert, event.concert_id) if event and event.concert_id else None
     return {
         "id": item.id,
         "event_id": item.event_id,
         "event_title": event.title if event else "",
         "event_date": event.date if event else "",
         "concert_id": event.concert_id if event else None,
+        "source": concert.source if concert else "",
+        "source_url": concert.source_url if concert else "",
         "entity_type": item.entity_type,
         "raw_text": item.raw_text,
         "normalized_text": item.normalized_text or "",
         "candidates": _hydrate_candidates(db, item.entity_type, item.candidates_json or []),
         "status": item.status,
+        "triage_bucket": item.triage_bucket or "critical",
+        "confidence_score": round(float(item.confidence_score or 0.0), 4),
+        "review_priority": int(item.review_priority or 1000),
         "resolved_entity_id": item.resolved_entity_id,
         "resolved_entity_label": _entity_label(db, item.entity_type, item.resolved_entity_id),
         "resolution_action": item.resolution_action or "",
@@ -679,6 +746,7 @@ def _delete_concert_records(db: Session, concert_ids: list[int]) -> int:
 
 def _get_dashboard_payload(
     db: Session,
+    current_user: User | None = None,
     q: str = "",
     source: str = "",
     date_start: str = "",
@@ -718,7 +786,14 @@ def _get_dashboard_payload(
         maybe_hidden_count = len(concerts_payload) - len(visible_concerts)
 
     visible_concerts = visible_concerts[:500]
-    rules = db.scalars(select(NotificationRule).order_by(NotificationRule.id.desc())).all()
+    if current_user is None:
+        rules: list[NotificationRule] = []
+    else:
+        rules = db.scalars(
+            select(NotificationRule)
+            .where(NotificationRule.user_id == current_user.id)
+            .order_by(NotificationRule.id.desc())
+        ).all()
 
     sources = sorted({concert["source"] for concert in visible_concerts if concert["source"]})
 
@@ -737,7 +812,11 @@ def _get_dashboard_payload(
     return {
         "concerts": visible_concerts,
         "rules": [_rule_to_dict(rule) for rule in rules],
-        "settings": _settings_to_dict(settings),
+        "settings": _settings_to_admin_dict(settings) if current_user and current_user.role == "admin" else _settings_to_dict(settings),
+        "notification_profile": _notification_profile_to_dict(current_user) if current_user else {
+            "notifications_enabled": False,
+            "notification_email": "",
+        },
         "filters": {
             "q": q,
             "source": source,
@@ -776,8 +855,129 @@ def dashboard(
     )
 
 
+@app.post("/api/auth/signup")
+def api_auth_signup(payload: SignupRequest, db: Session = Depends(get_db)):
+    username = payload.username.strip()
+    email = str(payload.email).strip().lower()
+    password = payload.password
+
+    if len(username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+    if len(password) < 10:
+        raise HTTPException(status_code=400, detail="Password must be at least 10 characters")
+
+    username_exists = db.scalar(select(User).where(User.username == username).limit(1))
+    if username_exists:
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    email_exists = db.scalar(select(User).where(User.email == email).limit(1))
+    if email_exists:
+        raise HTTPException(status_code=400, detail="Email already exists")
+
+    user = User(
+        username=username,
+        email=email,
+        password_hash=hash_password(password),
+        role=choose_initial_role(db),
+        trust_level=choose_initial_trust_level(db),
+        notifications_enabled=False,
+        notification_email=email,
+        is_active=True,
+    )
+    db.add(user)
+    db.flush()
+
+    session = create_session(db, user.id)
+    db.commit()
+    db.refresh(user)
+
+    logger.info(
+        "auth_signup user_id=%s username=%s role=%s trust_level=%s",
+        user.id,
+        user.username,
+        user.role,
+        user.trust_level,
+    )
+    return {
+        "ok": True,
+        "token": session.token,
+        "expires_at": session.expires_at.isoformat() if session.expires_at else None,
+        "user": _user_to_dict(user),
+    }
+
+
+@app.post("/api/auth/login")
+def api_auth_login(payload: LoginRequest, db: Session = Depends(get_db)):
+    identity = payload.username_or_email.strip()
+    password = payload.password
+
+    user = db.scalar(select(User).where(User.username == identity).limit(1))
+    if user is None:
+        user = db.scalar(select(User).where(User.email == identity.lower()).limit(1))
+
+    if user is None or not verify_password(password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="User account inactive")
+
+    session = create_session(db, user.id)
+    db.commit()
+    logger.info("auth_login user_id=%s username=%s", user.id, user.username)
+    return {
+        "ok": True,
+        "token": session.token,
+        "expires_at": session.expires_at.isoformat() if session.expires_at else None,
+        "user": _user_to_dict(user),
+    }
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    token = session_token_from_request(request)
+    session = db.scalar(select(UserSession).where(UserSession.token == token).limit(1))
+    if session:
+        db.delete(session)
+        db.commit()
+    logger.info("auth_logout user_id=%s", current_user.id)
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+def api_auth_me(current_user: User = Depends(get_current_user)):
+    return {"ok": True, "user": _user_to_dict(current_user)}
+
+
+@app.get("/api/notifications/profile")
+def api_get_notification_profile(current_user: User = Depends(require_contributor)):
+    return {"ok": True, "profile": _notification_profile_to_dict(current_user)}
+
+
+@app.put("/api/notifications/profile")
+def api_update_notification_profile(
+    payload: NotificationProfileUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_contributor),
+):
+    current_user.notifications_enabled = bool(payload.notifications_enabled)
+    current_user.notification_email = str(payload.notification_email or "").strip()
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    logger.info(
+        "notification_profile_updated user_id=%s enabled=%s",
+        current_user.id,
+        current_user.notifications_enabled,
+    )
+    return {"ok": True, "profile": _notification_profile_to_dict(current_user)}
+
+
 @app.get("/api/dashboard")
 def api_dashboard(
+    request: Request,
     q: str = "",
     source: str = "",
     date_start: str = "",
@@ -795,9 +995,11 @@ def api_dashboard(
     performer_id_list = [int(x) for x in performer_ids.split(",") if x.strip().isdigit()] if performer_ids else None
     work_id_list = [int(x) for x in work_ids.split(",") if x.strip().isdigit()] if work_ids else None
     venue_id_list = [int(x) for x in venue_ids.split(",") if x.strip().isdigit()] if venue_ids else None
+    current_user = resolve_user_from_request(request, db)
 
     return _get_dashboard_payload(
         db,
+        current_user=current_user,
         q=q,
         source=source,
         date_start=date_start,
@@ -827,6 +1029,7 @@ def update_settings(
     openrouter_timeout_seconds: int = Form(40),
     openrouter_max_retries: int = Form(2),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     settings = get_or_create_settings(db)
     settings.scrape_interval_minutes = max(1, scrape_interval_minutes)
@@ -853,7 +1056,11 @@ def update_settings(
 
 
 @app.put("/api/settings")
-def api_update_settings(payload: SettingsUpdate, db: Session = Depends(get_db)):
+def api_update_settings(
+    payload: SettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
     settings = get_or_create_settings(db)
     settings.scrape_interval_minutes = max(1, payload.scrape_interval_minutes)
     settings.smtp_host = payload.smtp_host.strip()
@@ -875,7 +1082,7 @@ def api_update_settings(payload: SettingsUpdate, db: Session = Depends(get_db)):
     )
 
     schedule_scraping()
-    return {"ok": True, "settings": _settings_to_dict(settings)}
+    return {"ok": True, "settings": _settings_to_admin_dict(settings)}
 
 
 @app.post("/rules")
@@ -887,8 +1094,10 @@ def create_rule(
     time_contains: str = Form(""),
     enabled: str | None = Form(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_contributor),
 ):
     rule = NotificationRule(
+        user_id=current_user.id,
         name_contains=name_contains.strip(),
         performer_contains=performer_contains.strip(),
         program_contains=program_contains.strip(),
@@ -903,8 +1112,13 @@ def create_rule(
 
 
 @app.post("/api/rules")
-def api_create_rule(payload: RuleCreate, db: Session = Depends(get_db)):
+def api_create_rule(
+    payload: RuleCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_contributor),
+):
     rule = NotificationRule(
+        user_id=current_user.id,
         name_contains=payload.name_contains.strip(),
         performer_contains=payload.performer_contains.strip(),
         program_contains=payload.program_contains.strip(),
@@ -920,9 +1134,13 @@ def api_create_rule(payload: RuleCreate, db: Session = Depends(get_db)):
 
 
 @app.post("/rules/{rule_id}/delete")
-def delete_rule(rule_id: int, db: Session = Depends(get_db)):
+def delete_rule(
+    rule_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_contributor),
+):
     rule = db.get(NotificationRule, rule_id)
-    if rule:
+    if rule and (current_user.role == "admin" or rule.user_id == current_user.id):
         logger.info("rule_deleted id=%s", rule_id)
         db.delete(rule)
         db.commit()
@@ -930,10 +1148,16 @@ def delete_rule(rule_id: int, db: Session = Depends(get_db)):
 
 
 @app.delete("/api/rules/{rule_id}")
-def api_delete_rule(rule_id: int, db: Session = Depends(get_db)):
+def api_delete_rule(
+    rule_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_contributor),
+):
     rule = db.get(NotificationRule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
+    if current_user.role != "admin" and rule.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not allowed to delete this rule")
 
     db.delete(rule)
     db.commit()
@@ -942,14 +1166,21 @@ def api_delete_rule(rule_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/scrape-now")
-def scrape_now(db: Session = Depends(get_db)):
+def scrape_now(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
     logger.info("manual_scrape_triggered source=form")
     scrape_job()
     return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/api/scrape-now")
-def api_scrape_now(payload: ScrapeNowRequest | None = Body(default=None), db: Session = Depends(get_db)):
+def api_scrape_now(
+    payload: ScrapeNowRequest | None = Body(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
     selected_sources, invalid_sources = _normalize_scrape_sources(payload.sources if payload else None)
     if invalid_sources:
         raise HTTPException(
@@ -1169,7 +1400,11 @@ def api_dump_concerts(
 
 
 @app.delete("/api/concerts/{concert_id}")
-def api_delete_concert(concert_id: int, db: Session = Depends(get_db)):
+def api_delete_concert(
+    concert_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
     concert = db.get(Concert, concert_id)
     if not concert:
         raise HTTPException(status_code=404, detail="Concert not found")
@@ -1187,6 +1422,7 @@ def api_delete_concerts(
     date_filter: str = "",
     include_maybe: bool = False,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
 ):
     normalized_mode = (mode or "filtered").strip().lower()
     if normalized_mode not in {"filtered", "all"}:
@@ -1222,12 +1458,19 @@ def api_delete_concerts(
 @app.get("/api/resolution/unresolved")
 def api_list_unresolved(
     include_closed: bool = False,
+    include_deferred: bool = True,
     entity_type: str = "",
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_contributor),
 ):
-    query = select(UnresolvedEntity).order_by(UnresolvedEntity.created_at.desc())
+    query = select(UnresolvedEntity).order_by(
+        UnresolvedEntity.review_priority.asc(),
+        UnresolvedEntity.confidence_score.asc(),
+        UnresolvedEntity.created_at.asc(),
+    )
     if not include_closed:
-        query = query.where(UnresolvedEntity.status == "open")
+        allowed_status = ["open", "deferred"] if include_deferred else ["open"]
+        query = query.where(UnresolvedEntity.status.in_(allowed_status))
     if entity_type:
         query = query.where(UnresolvedEntity.entity_type == entity_type)
 
@@ -1238,48 +1481,131 @@ def api_list_unresolved(
     }
 
 
+def _finalize_match_suggestions(
+    db: Session,
+    unresolved: UnresolvedEntity,
+    now: datetime,
+    selected_candidate_id: int | None,
+    suggestion_status: str,
+) -> None:
+    linked_suggestions = db.scalars(
+        select(MatchSuggestion).where(MatchSuggestion.unresolved_entity_id == unresolved.id)
+    ).all()
+    for suggestion in linked_suggestions:
+        suggestion.status = suggestion_status
+        suggestion.selected_candidate_id = selected_candidate_id
+        suggestion.resolved_at = None if suggestion_status == "pending" else now
+        db.add(suggestion)
+
+
+def _resolve_one_unresolved(
+    db: Session,
+    unresolved: UnresolvedEntity,
+    payload: ResolveUnresolvedRequest,
+    now: datetime,
+    create_new_entity_id: int | None = None,
+) -> int | None:
+    action = payload.action
+    if action == "accept_candidate":
+        if payload.candidate_id is None:
+            raise HTTPException(status_code=400, detail="candidate_id is required for accept_candidate")
+        resolve_unresolved_with_existing(db, unresolved, payload.candidate_id)
+        unresolved.triage_bucket = "safe"
+        unresolved.review_priority = 9999
+        _finalize_match_suggestions(db, unresolved, now, unresolved.resolved_entity_id, "resolved")
+        unresolved.resolved_at = now
+        db.add(unresolved)
+        return unresolved.resolved_entity_id
+
+    if action == "create_new":
+        if create_new_entity_id is not None:
+            resolve_unresolved_with_existing(db, unresolved, create_new_entity_id)
+            unresolved.resolution_action = "create_new"
+            unresolved.triage_bucket = "safe"
+            unresolved.review_priority = 9999
+            _finalize_match_suggestions(db, unresolved, now, unresolved.resolved_entity_id, "resolved")
+            unresolved.resolved_at = now
+            db.add(unresolved)
+            return unresolved.resolved_entity_id
+
+        value = payload.value.strip() or unresolved.raw_text
+        created_id = resolve_unresolved_with_new_entity(db, unresolved, value)
+        if created_id is None:
+            raise HTTPException(status_code=400, detail="Could not create entity for unresolved item")
+        unresolved.triage_bucket = "safe"
+        unresolved.review_priority = 9999
+        _finalize_match_suggestions(db, unresolved, now, unresolved.resolved_entity_id, "resolved")
+        unresolved.resolved_at = now
+        db.add(unresolved)
+        return created_id
+
+    if action in {"mark_distinct", "reject"}:
+        mark_unresolved_distinct(db, unresolved, payload.candidate_id, payload.reason.strip())
+        unresolved.status = "rejected"
+        unresolved.resolution_action = "reject"
+        unresolved.resolved_at = now
+        _finalize_match_suggestions(db, unresolved, now, unresolved.resolved_entity_id, "rejected")
+        db.add(unresolved)
+        return None
+
+    if action == "skip":
+        unresolved.status = "deferred"
+        unresolved.resolution_action = "skip"
+        unresolved.resolved_at = None
+        unresolved.triage_bucket = "medium"
+        unresolved.review_priority = max(int(unresolved.review_priority or 1000), 600)
+        _finalize_match_suggestions(db, unresolved, now, unresolved.resolved_entity_id, "pending")
+        db.add(unresolved)
+        return None
+
+    raise HTTPException(status_code=400, detail=f"Unsupported action: {action}")
+
+
 @app.post("/api/resolution/unresolved/{unresolved_id}")
 def api_resolve_unresolved(
     unresolved_id: int,
     payload: ResolveUnresolvedRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_contributor),
 ):
     unresolved = db.get(UnresolvedEntity, unresolved_id)
     if not unresolved:
         raise HTTPException(status_code=404, detail="Unresolved entity not found")
 
-    if unresolved.status != "open":
-        raise HTTPException(status_code=400, detail="Unresolved entity is not open")
+    if unresolved.status not in {"open", "deferred"}:
+        raise HTTPException(status_code=400, detail="Unresolved entity is not reviewable")
 
-    if payload.action == "accept_candidate":
-        if payload.candidate_id is None:
-            raise HTTPException(status_code=400, detail="candidate_id is required for accept_candidate")
-        resolve_unresolved_with_existing(db, unresolved, payload.candidate_id)
-    elif payload.action == "create_new":
-        value = payload.value.strip() or unresolved.raw_text
-        created_id = resolve_unresolved_with_new_entity(db, unresolved, value)
-        if created_id is None:
-            raise HTTPException(status_code=400, detail="Could not create entity for unresolved item")
-    elif payload.action == "mark_distinct":
-        mark_unresolved_distinct(db, unresolved, payload.candidate_id, payload.reason.strip())
+    now = datetime.utcnow()
+    created_or_selected_id = _resolve_one_unresolved(db, unresolved, payload, now)
 
-    linked_suggestions = db.scalars(
-        select(MatchSuggestion).where(MatchSuggestion.unresolved_entity_id == unresolved.id)
-    ).all()
-    selected_candidate_id = unresolved.resolved_entity_id
-    for suggestion in linked_suggestions:
-        suggestion.status = "resolved"
-        suggestion.selected_candidate_id = selected_candidate_id
-        suggestion.resolved_at = datetime.utcnow()
-        db.add(suggestion)
+    batch_count = 1
+    if payload.apply_globally:
+        siblings = db.scalars(_similar_unresolved_query(unresolved).limit(500)).all()
+        for sibling in siblings:
+            _resolve_one_unresolved(
+                db,
+                sibling,
+                payload,
+                now,
+                create_new_entity_id=created_or_selected_id if payload.action == "create_new" else None,
+            )
+            batch_count += 1
 
-    unresolved.resolved_at = datetime.utcnow()
-    db.add(unresolved)
     db.commit()
     db.refresh(unresolved)
-    logger.info("unresolved_resolved id=%s action=%s", unresolved.id, payload.action)
+    logger.info(
+        "unresolved_resolved id=%s action=%s apply_globally=%s batch_count=%s",
+        unresolved.id,
+        payload.action,
+        payload.apply_globally,
+        batch_count,
+    )
 
-    return {"ok": True, "item": _unresolved_to_dict(db, unresolved)}
+    return {
+        "ok": True,
+        "item": _unresolved_to_dict(db, unresolved),
+        "batch_count": batch_count,
+    }
 
 
 @app.get("/api/resolution/merge-suggestions")
@@ -1287,6 +1613,7 @@ def api_list_merge_suggestions(
     include_closed: bool = False,
     entity_type: str = "",
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_contributor),
 ):
     query = select(MergeSuggestion).order_by(MergeSuggestion.created_at.desc())
     if not include_closed:
@@ -1306,6 +1633,7 @@ def api_update_merge_suggestion(
     suggestion_id: int,
     payload: UpdateMergeSuggestionRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_trusted),
 ):
     suggestion = db.get(MergeSuggestion, suggestion_id)
     if not suggestion:
