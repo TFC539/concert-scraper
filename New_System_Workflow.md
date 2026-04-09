@@ -1,295 +1,575 @@
-# Concert Data Extraction, Normalization, and Entity Resolution System
+# Concert Data Platform – Developer Overview (Updated)
 
-## 1. Overview
+## 1. Goal
 
-This system converts unstructured concert descriptions into a structured, normalized, and database-linked representation of events, performers, works, and venues.
+Build a reliable, scalable system that converts unstructured concert data into a structured, validated database of:
 
-The system is designed to:
-- minimize cost (LLM used only where necessary)
-- avoid incorrect merges (conservative matching)
-- support multilingual and cross-script data (e.g. Hangul ↔ Latin)
-- improve over time via feedback and alias expansion
+- events
+- performers
+- works
+- venues
 
-The system separates responsibilities clearly:
-- LLM: extraction and limited linguistic assistance
-- Application logic: normalization, matching, and decision-making
-- Database: source of truth
+The system combines:
+- AI extraction (LLM)
+- deterministic matching
+- human validation (initially solo, later community-assisted)
 
----
-
-## 2. End-to-End Pipeline
-
-
-Scraper → Raw Text → LLM Extraction → Normalization → Candidate Retrieval → Matching → Suggestion Engine → Resolution → Database
-
+Primary objective:
+→ **high-quality, trustworthy data over maximum automation**
 
 ---
 
-## 3. Input Layer (Scraper)
+## 2. Core Principles
 
-### Source
-- Venue websites (HTML)
-- Converted to cleaned plain text
+- LLM is NOT the source of truth (only extraction + assistance)
+- Database integrity > automation (avoid false merges at all cost)
+- Prefer missing data over incorrect data
+- No direct edits to canonical data
+- All changes go through proposal + review
+- System improves via feedback (aliases, decisions, exclusions)
 
-### Example Input
+---
 
-Klavierabend mit 김선욱.
-Werke von Chopin: Ballade Nr. 1 in g-Moll, op. 23
-Elbphilharmonie Großer Saal
+## 3. High-Level Architecture
+
+
+Scraper → LLM Extraction → Normalization → Matching → Triage → Proposal Layer → Review → Canonical DB
 
 
 ---
 
-## 4. Extraction Layer (LLM)
+## 4. Responsibilities by Layer
 
-### Objective
-Extract structured data from raw text without performing any database matching.
+### 4.1 Scraper
+- Collect concert data (initial scope: Hamburg + Northern Germany)
+- Clean HTML → plain text
+- Provide structured input to LLM
 
-### Output Schema (minimal, token-efficient)
-```json
-{
-  "p": ["string"],           // performers
-  "w": [
-    {
-      "c": "string",         // composer
-      "t": "string"          // title
-    }
-  ],
-  "v": "string",             // venue
-  "d": "string (optional)"   // date
-}
-Example Output
-{
-  "p": ["김선욱"],
-  "w": [
-    {
-      "c": "Chopin",
-      "t": "Ballade Nr. 1 in g-Moll, op. 23"
-    }
-  ],
-  "v": "Elbphilharmonie Großer Saal"
-}
-5. Normalization Layer
+---
 
-Transforms extracted values into canonical, comparable forms.
+### 4.2 LLM (OpenRouter – Gemini Flash Lite)
 
-5.1 Performer Normalization
+Used ONLY for:
+- extracting structured data (performers, works, venue, date)
+- optional disambiguation (small candidate sets only)
 
-Steps:
+NOT used for:
+- matching decisions
+- merging entities
+- tagging core data
 
-detect script (Latin, Hangul, etc.)
-transliterate to Latin if needed
-normalize case, spacing, punctuation
-generate variants (name order inversion)
+---
 
-Example:
+### 4.3 Normalization Layer
 
-Input:  김선욱
-Output: ["gim seonuk", "kim sunwook", "sunwook kim"]
-5.2 Work Normalization
+- transliteration (e.g. Hangul → Latin)
+- string normalization (case, spacing, punctuation)
+- name order handling
+- work parsing (composer, opus, key, etc.)
+- venue standardization
 
-Extract structured attributes from free-form titles:
+---
 
-Attributes:
+### 4.4 Matching Layer
 
-composer (normalized)
-form (e.g. sonata, ballade)
-number
-opus/catalogue number
-key
+- exact alias match (primary)
+- normalized match
+- fuzzy / similarity scoring
+- optional LLM disambiguation (only when ambiguous)
 
-Example:
+---
 
-Input:  Ballade Nr. 1 in g-Moll, op. 23
-Output: {
-  composer: "chopin",
-  form: "ballade",
-  number: 1,
-  opus: 23,
-  key: "g minor"
-}
-5.3 Venue Normalization
-normalize punctuation and spacing
-resolve known aliases to canonical name
-6. Candidate Retrieval
+## 5. Triage System (Critical for Solo Phase)
 
-For each normalized entity, retrieve a small set of candidates from the database.
+All extracted entities are split into 3 buckets:
 
-Techniques:
-ILIKE / trigram search (Postgres)
-fuzzy matching
-optional embedding similarity
-Output Example
-Input: "kim sunwook"
+### 🟢 Safe (auto-accept)
+- exact alias matches
+- known venues
+- high confidence matches (>0.95)
 
-Candidates:
-- Kim Sunwook (id: 123)
-- Sunwook Kim (id: 456)
+→ automatically written to canonical DB
 
-Candidate list should be limited (typically 3–10 entries).
+---
 
-7. Matching Layer
+### 🟡 Medium confidence (review later)
+- strong fuzzy matches
+- recurring performers
 
-Matches normalized entities to database records.
+→ stored but not blocking
 
-7.1 Performer Matching
+---
 
-Process:
+### 🔴 Critical (manual review)
+- new performers
+- ambiguous matches
+- low confidence (<0.85)
 
-exact alias match → immediate accept
-normalized match → high confidence
-fuzzy / embedding match → scored candidate
-optional LLM disambiguation (only if ambiguous)
-Decision Rules
-Condition	Action
-exact / alias match	accept
-score > 0.95	accept
-0.85–0.95	LLM-assisted check
-< 0.85	unresolved
-LLM Disambiguation (optional)
+→ ONLY these require immediate review
 
-Input:
+---
 
-Name: 김선욱
-Candidates:
-1. Kim Sunwook (id: 123)
-2. Sunwook Kim (id: 456)
+## 6. Proposal Layer
 
-Output:
+All non-safe operations become proposals (no direct DB writes).
 
-{
-  "id": 123,
-  "confidence": 0.94
-}
-7.2 Work Matching
+Types:
+- match proposal (input → existing entity)
+- new entity proposal
+- correction proposal
+- merge suggestion (restricted)
 
-Match using structured attributes:
+---
 
-composer
-form
-number
-opus/catalogue
-key
-7.3 Venue Matching
-deterministic alias lookup
-typically no LLM required
-8. Uncertainty Handling
+## 7. Review Workflow
 
-If no match exceeds threshold:
 
-{
-  "status": "unresolved",
-  "candidates": [
-    { "id": 123, "score": 0.78 },
-    { "id": 456, "score": 0.74 }
-  ]
-}
+Proposal → Review → Decision → Apply → Learn
 
-Unresolved entities are passed to the suggestion engine.
 
-9. Suggestion Engine
+Initially:
+→ only you review
 
-Generates reviewable suggestions for ambiguous or conflicting cases.
+Later:
+→ community-assisted
 
-9.1 Match Suggestions (incoming → DB)
-{
-  "type": "match_suggestion",
-  "entity": "performer",
-  "input": "Suyeon Kim",
-  "candidates": [
-    { "id": 123, "name": "Suyeon Kim", "score": 0.88 },
-    { "id": 456, "name": "Sukyeon Kim", "score": 0.84 }
-  ]
-}
-9.2 Merge Suggestions (DB ↔ DB)
-{
-  "type": "merge_suggestion",
-  "entity": "performer",
-  "candidate_a": { "id": 123, "name": "Suyeon Kim" },
-  "candidate_b": { "id": 456, "name": "Sukyeon Kim" },
-  "score": 0.72,
-  "llm_assessment": "likely_different",
-  "confidence": 0.25,
-  "reason": "Names are similar but not typical transliteration variants"
-}
-Rules
-never auto-merge based on suggestion
-suggestions are advisory only
-10. Resolution Layer
+---
 
-Human-in-the-loop interface for handling suggestions.
+## 8. Canonical Database
 
-Actions
+Stores ONLY validated data:
+
+- performers
+- works
+- venues
+- events (linked to entities)
+
+This is the single source of truth.
+
+---
+
+## 9. Feedback & Learning
+
+Each decision updates:
+
+- alias tables (name variations)
+- matching confidence
+- exclusion rules (do_not_merge)
+
+System becomes more accurate over time.
+
+---
+
+## 10. Community System (Planned)
+
+### 10.1 User Capabilities
+
+Users can:
+- report incorrect data
+- suggest corrections
+- confirm/reject proposals
+
+Users CANNOT:
+- directly edit database
+- auto-merge entities
+
+---
+
+### 10.2 Trust Levels
+
+- new users → low influence
+- trusted users → higher weight
+- verified users → strong influence
+
+---
+
+### 10.3 Consensus Logic
+
+- AI provides initial confidence
+- users vote (weighted)
+- decision applied only after threshold reached
+
+---
+
+### 10.4 Safety
+
+- merges require stricter thresholds
+- “do not merge” flags prevent repeated mistakes
+- full audit log for all changes
+
+---
+
+## 11. Frontend Requirements (VERY IMPORTANT)
+
+### 11.1 Public UI
+
+- display concerts cleanly
+- handle missing data gracefully
+- allow issue reporting:
+  → “Report incorrect data” button
+
+---
+
+### 11.2 Contributor UI (Internal → later public)
+
+This is intentionally “annoying” but functional.
+
+Must include:
+
+#### Authentication
+- user accounts
+- login / signup
+- basic session handling
+
+---
+
+#### Triage Dashboard
+
+Sorted by:
+- lowest confidence first
+- unresolved first
+
+Each item shows:
+- input value
+- candidate matches
+- confidence score
+
+Actions:
+- accept match
+- create new entity
+- reject
+- skip
+
+---
+
+#### Proposal Review UI
+
+For each proposal:
+- show suggestion
+- show AI confidence
+- show source
+- allow:
+  - approve
+  - reject
+  - suggest alternative
+
+---
+
+#### Batch Handling
+
+Must support:
+- resolving repeated entities once (apply to all)
+- grouping similar entries
+
+---
+
+## 12. Tagging System (Separate Layer)
+
+- NOT part of extraction
+- NOT part of core data
+
+Handled as enrichment:
+
+- rule-based when possible
+- LLM fallback when ambiguous
+- stored with confidence
+
+---
+
+## 13. Web Search (Optional)
+
+Used ONLY for:
+- enrichment
+- rare disambiguation
+
+NOT used for:
+- extraction
+- matching
+
+---
+
+## 14. Backfill Strategy
+
+- process new data first
+- stabilize system
+- reprocess old data in batches
+- compare before overwriting
+
+---
+
+## 15. Deployment Scope
+
+### Phase 1
+- Hamburg + nearby
+- limited venues
+- high accuracy focus
+
+### Phase 2
+- Northern Germany
+
+### Phase 3
+- expansion
+
+---
+
+## 16. Key Risks
+
+- incorrect merges (highest priority)
+- over-reliance on LLM
+- uncontrolled user edits
+- skipping triage → overload
+
+---
+
+## 17. Key Insight
+
+This system is not just a scraper.
+
+It is:
+→ **a validated, self-improving concert data system**
+
+---
+
+## 18. Summary
+
+- AI extracts data
+- system matches deterministically
+- only uncertain cases are reviewed
+- users contribute signals, not direct edits
+- database remains clean and trustworthy
+- system improves continuously over time
+Nope don’t write it as „hey we need this“ but „hey we need to change the current system to do this“
+# Concert Data Platform – System Update Briefing
+
+## 1. Objective
+
+We need to evolve the current system from a **pure extraction pipeline** into a **validated, confidence-driven data system with controlled human input**.
+
+The goal is to:
+- improve data reliability
+- reduce manual workload
+- enable future community contributions
+- prevent incorrect merges or corrupted data
+
+---
+
+## 2. Required Architectural Change
+
+### Current (implicit)
+```text
+Scraper → Extraction → DB
+Target
+Scraper → LLM Extraction → Normalization → Matching → Triage → Proposal Layer → Review → Canonical DB
+
+Key change:
+→ Introduce separation between raw results and validated data
+
+3. Introduce Triage System (Critical Change)
+
+Instead of treating all extracted data equally, we must classify results into:
+
+🟢 Safe (auto-accept)
+exact alias matches
+known venues
+high-confidence matches (>0.95)
+
+→ directly written to canonical DB
+
+🟡 Medium confidence (deferred review)
+strong fuzzy matches
+recurring performers
+
+→ stored, not blocking
+
+🔴 Critical (manual review required)
+new performers
+ambiguous matches
+low confidence (<0.85)
+
+→ only these require immediate attention
+
+Reason
+
+We currently cannot manually review all entries.
+This change reduces workload to only high-risk cases.
+
+4. Introduce Proposal Layer (Required)
+
+We must stop writing uncertain data directly to the main database.
+
+All non-safe operations must be stored as proposals.
+
+Types:
+
+match proposal
+new entity proposal
+correction proposal
+merge suggestion (restricted)
+
+Key rule:
+→ Canonical DB must only contain validated data
+
+5. Matching Responsibility Adjustment
+
+We need to explicitly separate responsibilities:
+
+LLM
+extraction only
+optional disambiguation (small candidate sets)
+System (code)
+normalization
+candidate retrieval
+matching decisions
+confidence scoring
+
+→ LLM must NOT make database decisions
+
+6. Feedback & Learning Layer
+
+We must introduce persistent learning:
+
+alias storage (name variations)
+transliteration mappings
+“do not merge” rules
+confidence tuning
+
+Every reviewed decision must improve future matching.
+
+7. Frontend Requirements (New Requirement)
+
+We need to introduce a minimal but functional contributor interface.
+
+7.1 Authentication
+user accounts required
+login / signup
+session handling
+7.2 Triage Dashboard
+
+Required for both internal use and future contributors.
+
+Must include:
+
+list of unresolved / low-confidence entries
+sorted by priority (lowest confidence first)
+
+Each entry must show:
+
+extracted value
+candidate matches
+confidence score
+
+Actions:
+
 accept match
-select alternative candidate
 create new entity
-merge entities
-mark as distinct (do_not_merge)
-Negative Link Example
-do_not_merge(123, 456)
+reject
+skip
+7.3 Proposal Review Interface
 
-Prevents repeated incorrect suggestions.
+For each proposal:
 
-11. Database Schema
-performers
-id | canonical_name | native_name
-performer_aliases
-performer_id | alias | script | normalized
-works
-id | composer | form | number | opus | key
-venues
-id | name | city
-events
-id | title | date | venue_id
-event_performers
-event_id | performer_id | role
-event_works
-event_id | work_id | sequence_order
-12. Feedback Loop
+display suggestion
+show AI confidence
+show source
 
-System learns from all confirmed decisions:
+Actions:
 
-On match:
-add alias mapping
-On merge:
-unify entities
-merge aliases
-On rejection:
-add exclusion rule (do_not_merge)
-13. System Properties
-conservative matching (avoid false merges)
-deterministic where possible
-LLM used only for:
+approve
+reject
+suggest alternative
+7.4 Batch Handling (Important)
+
+System must support:
+
+resolving repeated entities once (apply globally)
+grouping similar entries
+Note
+
+UI can be minimal and “functional over polished”
+→ priority is speed of validation, not UX perfection
+
+8. Community Contribution Model (Future-Ready)
+
+We need to design system to support:
+
+user-submitted corrections
+proposal voting
+trust-based weighting
+
+BUT:
+
+→ users must NOT directly edit canonical data
+→ all contributions go through proposal layer
+
+9. Data Integrity Rules (Must Enforce)
+never auto-merge unless near certainty
+false merge is worse than duplicate
+prefer missing data over incorrect data
+maintain full audit trail of changes
+10. Tagging System Adjustment
+
+Tagging must NOT be part of extraction.
+
+Instead:
+
+move to separate enrichment layer
+use rule-based tagging where possible
+use LLM only when ambiguous
+store tags with confidence
+11. Web Search Usage
+
+Web search must NOT be part of:
+
 extraction
-optional disambiguation
-cross-script support (Hangul, Latin, etc.)
-incremental improvement over time
-14. Example End-to-End Flow
-Input
-Recital with Kim Sunwook
-Chopin Ballade No.1
-Elbphilharmonie
-Final Output
-{
-  "event": {
-    "venue_id": 1
-  },
-  "performers": [
-    {
-      "performer_id": 123,
-      "confidence": 0.99
-    }
-  ],
-  "works": [
-    {
-      "work_id": 456,
-      "confidence": 0.97
-    }
-  ]
-}
-15. Key Design Principles
-LLM is not the source of truth
-database integrity has priority over automation
-false merges are worse than duplicates
-matching is deterministic; LLM is assistive
-system improves through feedback, not assumptions
+matching
+
+Allowed only for:
+
+enrichment
+rare disambiguation
+12. Backfill Strategy (Deferred Change)
+
+We must:
+
+stabilize pipeline on new data
+then reprocess historical data in batches
+compare before overwriting
+13. Deployment Scope
+
+Initial system remains limited to:
+
+Hamburg + surrounding region
+
+Reason:
+
+faster learning
+higher accuracy
+manageable dataset
+14. Expected Impact
+
+After implementing these changes:
+
+manual workload decreases significantly
+system becomes self-improving
+data quality increases over time
+system becomes ready for public release
+15. Summary
+
+We are transitioning from:
+
+→ automated extraction system
+
+to:
+
+→ validated, triaged, human-assisted data system
+
+Key additions:
+
+triage layer
+proposal system
+review workflow
+contributor UI
+learning mechanisms
+
+Primary goal:
+→ reliable, trustworthy concert data at scale
