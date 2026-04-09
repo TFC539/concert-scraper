@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "https://esm.sh/react@18.3.1";
+import React, { useEffect, useMemo, useRef, useState } from "https://esm.sh/react@18.3.1";
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 
 const h = React.createElement;
@@ -272,7 +272,11 @@ function App() {
   const [reviewReasons, setReviewReasons] = useState({});
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [filterLabels, setFilterLabels] = useState({ performers: {}, works: {}, venues: {} });
+  const mobileNavRef = useRef(null);
+  const mobileNavButtonRef = useRef(null);
 
   const activeRuleCount = useMemo(() => rules.filter((rule) => rule.enabled).length, [rules]);
   const sourceCount = useMemo(() => sources.length, [sources]);
@@ -391,6 +395,59 @@ function App() {
       setShowAuthPanel(false);
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) {
+      return undefined;
+    }
+
+    const menuNode = mobileNavRef.current;
+    if (menuNode) {
+      const focusables = menuNode.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      if (focusables.length > 0) {
+        focusables[0].focus();
+      }
+    }
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setMobileNavOpen(false);
+        mobileNavButtonRef.current?.focus();
+        return;
+      }
+
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const container = mobileNavRef.current;
+      if (!container) {
+        return;
+      }
+      const focusable = Array.from(
+        container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+      ).filter((node) => !node.hasAttribute("disabled"));
+      if (focusable.length === 0) {
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobileNavOpen]);
 
   useEffect(() => {
     if (scrapeSources.length === 0) {
@@ -553,6 +610,7 @@ function App() {
     if (!query || !query.trim()) {
       setSearchSuggestions([]);
       setShowSearchSuggestions(false);
+      setActiveSuggestionIndex(-1);
       return;
     }
 
@@ -567,9 +625,11 @@ function App() {
 
       setSearchSuggestions(payload.suggestions || []);
       setShowSearchSuggestions((payload.suggestions || []).length > 0);
+      setActiveSuggestionIndex(-1);
     } catch (error) {
       setSearchSuggestions([]);
       setShowSearchSuggestions(false);
+      setActiveSuggestionIndex(-1);
     }
   }
 
@@ -652,18 +712,42 @@ function App() {
 
     window.location.hash = pageId;
     setActivePage(pageId);
+    setMobileNavOpen(false);
   }
 
   function goToAuthPanel() {
     window.location.hash = "concerts";
     setActivePage("concerts");
     setShowAuthPanel(true);
+    setMobileNavOpen(false);
     window.setTimeout(() => {
       const node = document.getElementById("auth-panel");
       if (node) {
         node.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     }, 80);
+  }
+
+  function applySearchSuggestion(suggestion) {
+    const nextFilters = { ...filters };
+    if (suggestion.type === "performer") {
+      if (!(nextFilters.performer_ids || []).includes(suggestion.id)) {
+        nextFilters.performer_ids = [...(nextFilters.performer_ids || []), suggestion.id];
+      }
+    } else if (suggestion.type === "work") {
+      if (!(nextFilters.work_ids || []).includes(suggestion.id)) {
+        nextFilters.work_ids = [...(nextFilters.work_ids || []), suggestion.id];
+      }
+    } else if (suggestion.type === "venue") {
+      if (!(nextFilters.venue_ids || []).includes(suggestion.id)) {
+        nextFilters.venue_ids = [...(nextFilters.venue_ids || []), suggestion.id];
+      }
+    }
+    setFilters(nextFilters);
+    setShowSearchSuggestions(false);
+    setSearchSuggestions([]);
+    setActiveSuggestionIndex(-1);
+    void loadDashboard(nextFilters);
   }
 
   function toggleScrapeSource(source) {
@@ -1970,11 +2054,47 @@ function App() {
             h("label", null, "Search"),
             h("input", {
               type: "text",
+              role: "combobox",
+              "aria-expanded": showSearchSuggestions && searchSuggestions.length > 0 ? "true" : "false",
+              "aria-controls": "concert-search-suggestions",
+              "aria-autocomplete": "list",
+              "aria-activedescendant":
+                activeSuggestionIndex >= 0 && searchSuggestions[activeSuggestionIndex]
+                  ? `search-suggestion-${activeSuggestionIndex}`
+                  : undefined,
               placeholder: "Name, performers, hall, program",
               value: filters.q,
               onChange: (event) => {
                 setFilters({ ...filters, q: event.target.value });
                 void loadSearchSuggestions(event.target.value);
+              },
+              onKeyDown: (event) => {
+                if (!showSearchSuggestions || searchSuggestions.length === 0) {
+                  return;
+                }
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setActiveSuggestionIndex((previous) => (previous + 1) % searchSuggestions.length);
+                  return;
+                }
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setActiveSuggestionIndex((previous) =>
+                    previous <= 0 ? searchSuggestions.length - 1 : previous - 1
+                  );
+                  return;
+                }
+                if (event.key === "Enter") {
+                  if (activeSuggestionIndex >= 0 && searchSuggestions[activeSuggestionIndex]) {
+                    event.preventDefault();
+                    applySearchSuggestion(searchSuggestions[activeSuggestionIndex]);
+                  }
+                  return;
+                }
+                if (event.key === "Escape") {
+                  setShowSearchSuggestions(false);
+                  setActiveSuggestionIndex(-1);
+                }
               },
               onBlur: () => {
                 setTimeout(() => setShowSearchSuggestions(false), 200);
@@ -1988,7 +2108,7 @@ function App() {
             showSearchSuggestions && searchSuggestions.length > 0
               ? h(
                   "ul",
-                  { className: "search-suggestions" },
+                  { className: "search-suggestions", id: "concert-search-suggestions", role: "listbox" },
                   searchSuggestions.map((suggestion, index) => {
                     const label =
                       suggestion.type === "performer"
@@ -2000,22 +2120,17 @@ function App() {
                     return h(
                       "li",
                       {
+                        id: `search-suggestion-${index}`,
                         key: `${suggestion.type}-${suggestion.id}-${index}`,
-                        className: `suggestion-item suggestion-${suggestion.type}`,
+                        className: `suggestion-item suggestion-${suggestion.type} ${
+                          activeSuggestionIndex === index ? "active" : ""
+                        }`,
+                        role: "option",
+                        "aria-selected": activeSuggestionIndex === index ? "true" : "false",
                         onClick: () => {
-                          const nextFilters = { ...filters };
-                          if (suggestion.type === "performer") {
-                            nextFilters.performer_ids = [...(nextFilters.performer_ids || []), suggestion.id];
-                          } else if (suggestion.type === "work") {
-                            nextFilters.work_ids = [...(nextFilters.work_ids || []), suggestion.id];
-                          } else if (suggestion.type === "venue") {
-                            nextFilters.venue_ids = [...(nextFilters.venue_ids || []), suggestion.id];
-                          }
-                          setFilters(nextFilters);
-                          setShowSearchSuggestions(false);
-                          setSearchSuggestions([]);
-                          void loadDashboard(nextFilters);
+                          applySearchSuggestion(suggestion);
                         },
+                        onMouseEnter: () => setActiveSuggestionIndex(index),
                       },
                       h("span", { className: "suggestion-type" }, suggestion.type),
                       h("span", { className: "suggestion-label" }, label)
@@ -2840,7 +2955,40 @@ function App() {
       )
     ),
 
-    notice && h("div", { className: `notice ${notice.type}` }, notice.text),
+    notice &&
+      h(
+        "div",
+        { className: `notice ${notice.type}`, role: "status", "aria-live": "polite" },
+        h("span", null, notice.text),
+        h(
+          "button",
+          {
+            type: "button",
+            className: "notice-close",
+            onClick: () => setNotice(null),
+            "aria-label": "Dismiss notice",
+          },
+          "×"
+        )
+      ),
+
+    h(
+      "button",
+      {
+        ref: mobileNavButtonRef,
+        className: `hamburger ${mobileNavOpen ? "open" : ""}`,
+        type: "button",
+        "aria-expanded": mobileNavOpen ? "true" : "false",
+        "aria-controls": "dashboard-page-nav",
+        "aria-label": mobileNavOpen ? "Close navigation menu" : "Open navigation menu",
+        onClick: () => setMobileNavOpen((previous) => !previous),
+      },
+      h("span", { className: "hamburger-line", "aria-hidden": "true" }),
+      h("span", { className: "hamburger-line", "aria-hidden": "true" }),
+      h("span", { className: "hamburger-line", "aria-hidden": "true" })
+    ),
+
+    mobileNavOpen ? h("button", { className: "nav-overlay", type: "button", "aria-label": "Close navigation", onClick: () => setMobileNavOpen(false) }) : null,
 
     !currentUser && showAuthPanel
       ? h("div", { className: "page-stack" }, renderAuthPanel())
@@ -2848,7 +2996,18 @@ function App() {
 
     h(
       "nav",
-      { className: "page-nav", "aria-label": "Dashboard pages" },
+      {
+        id: "dashboard-page-nav",
+        ref: mobileNavRef,
+        className: `page-nav ${mobileNavOpen ? "page-nav-open" : ""}`,
+        "aria-label": "Dashboard pages",
+      },
+      h(
+        "div",
+        { className: "mobile-nav-header" },
+        h("p", { className: "eyebrow" }, "Navigation"),
+        h("div", { className: "status-note" }, `Latest sync: ${latestFetchLabel}`)
+      ),
       visiblePageConfig.map((page) =>
         h(
           "button",
@@ -2860,6 +3019,27 @@ function App() {
           },
           page.label
         )
+      ),
+      h(
+        "div",
+        { className: "mobile-nav-actions" },
+        !currentUser
+          ? h(
+              "button",
+              {
+                className: "btn-ghost",
+                type: "button",
+                onClick: () => {
+                  if (showAuthPanel) {
+                    setShowAuthPanel(false);
+                    return;
+                  }
+                  goToAuthPanel();
+                },
+              },
+              showAuthPanel ? "Hide sign in" : "Sign in / Sign up"
+            )
+          : null
       )
     ),
 
