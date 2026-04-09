@@ -1,0 +1,1471 @@
+Batch generated at: 2026-04-09T03:40:28.154786+00:00
+Requested prompts: 10
+Exported prompts: 10
+Selection source: https://www.elbphilharmonie.de/en/whats-on/
+
+==========================================================================================
+
+=== Prompt 1/10 ===
+Generated at: 2026-04-09T03:40:23.553802+00:00
+Source URL: https://www.elbphilharmonie.de/en/whats-on/school-concert-hiphop-academy-hamburg-ensemble-resonanz/24176
+
+# System Prompt
+
+Extract concert entities as strict JSON only. Return keys p (performers), w (works), v (venue), optional d (date), s (sold_out boolean), and pt (price_tags string list). Normalize to atomic list items: each performer must be one person or ensemble name only; each work must be one composition in program order. Do not combine multiple performers or works into one string item. Input may contain sections Event Metadata, Performers, and Programme with bullet lines. Prefer explicit values from those sections. Ignore non-entity labels like Start, End, Series, Find out more, Promoter, Supported by, and booklet/pdf references. For performer lines with roles/instruments, keep only the person or ensemble name. Treat ticketing lines as evidence for sold_out and pt, not as works. Extract concise ticket price tags exactly as shown in text when present (examples: 'EUR 39', '$45', 'ab 20 EUR', 'Free'). Each work item must include c (composer) and t (title), using empty strings when unknown. Do not match to external databases and do not add explanations or markdown.
+
+# User Prompt
+
+Concert listing text:
+Event Metadata:
+Name: School Concert »HipHop Academy Hamburg & Ensemble Resonanz«
+Venue: 
+Date: Fri, 10 Apr 2026 11:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/school-concert-hiphop-academy-hamburg-ensemble-resonanz/24176
+
+Performers:
+- Ensemble Resonanz
+- Barbara Bultmann
+- violin
+- Corinna Guthmann
+- violin
+- Skaistė Dikšaitytė
+- violin
+- Tom Glöckner
+- violin
+- Tim-Erik Winzer
+- viola
+- Maresi Stumpf
+- viola
+- Saskia Ogilvie
+- violoncello
+- Saerom Park
+- violoncello
+- John Eckhardt
+- double bass
+- HipHop Academy Hamburg
+- Andy Calypso
+- hip hop dance
+- Franklyn (Slunch) Kakyire
+- hip hop dance
+- Jenny Love
+- hip hop dance
+- Marco (Mallekid) Baaden
+- Breaking
+- Merve (Mer-C) Can
+- Breaking
+- Grace (Gege) Owusu
+- vocals
+- Sebastian (Sebó) Bosum
+- rap
+- Amir (107 Amir) Dacic
+- rap
+- Marlene Schleicher
+- stage direction
+- Professor Niels (Storm) Robitzky
+- choreography
+- Tobias Schwencke
+- composition
+- George Brenner
+- producing
+- Thorben Schumüller
+- stage, costume
+- Charlotte Beinhauer
+- script
+- Tim Dollmann
+- musical advice Hip Hop
+
+Programme:
+- »Masters of Ceremony« (German only)
+- Eine interdisziplinäre Performance mit Musik von Igor Strawinsky und
+- Read more
+- Read less
+
+Ticketing: Sold out € 5 | € 5 | Tickets € 5 € 5 | Tickets € 5 | € | 5 | Sold out | Remaining tickets occasionally available at box office | The cloakrooms are located on the 11th floor (fee: € 2). Jackets and handbags may be taken into the hall.
+
+Excerpt:
+String ensemble meets hip-hop crew: originating from Igor Stravinsky’s ballet »Apollon musagète«, the musicians of Ensemble Resonanz devise the new, crossover piece »Masters of Ceremony« with experts from the HipHop Academy in Hamburg Billstedt. Together, they ask what the ballet, premiered in 1928 in which the god Apollo dances with three muses, has got to do with us today and create new music from the original. The interplay of breakdancing, rap and string music produces such an extraordinary output, which is staged using scenery and visuals in the Grand Hall.
+
+Eine interdisziplinäre Performance mit Musik von Igor Strawinsky und
+
+Return JSON schema:
+{"p": ["string"], "w": [{"c": "string", "t": "string"}], "v": "string", "d": "string optional", "s": "boolean optional", "pt": ["string"]}
+
+# Raw Extraction Text
+
+Event Metadata:
+Name: School Concert »HipHop Academy Hamburg & Ensemble Resonanz«
+Venue: 
+Date: Fri, 10 Apr 2026 11:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/school-concert-hiphop-academy-hamburg-ensemble-resonanz/24176
+
+Performers:
+- Ensemble Resonanz
+- Barbara Bultmann
+- violin
+- Corinna Guthmann
+- violin
+- Skaistė Dikšaitytė
+- violin
+- Tom Glöckner
+- violin
+- Tim-Erik Winzer
+- viola
+- Maresi Stumpf
+- viola
+- Saskia Ogilvie
+- violoncello
+- Saerom Park
+- violoncello
+- John Eckhardt
+- double bass
+- HipHop Academy Hamburg
+- Andy Calypso
+- hip hop dance
+- Franklyn (Slunch) Kakyire
+- hip hop dance
+- Jenny Love
+- hip hop dance
+- Marco (Mallekid) Baaden
+- Breaking
+- Merve (Mer-C) Can
+- Breaking
+- Grace (Gege) Owusu
+- vocals
+- Sebastian (Sebó) Bosum
+- rap
+- Amir (107 Amir) Dacic
+- rap
+- Marlene Schleicher
+- stage direction
+- Professor Niels (Storm) Robitzky
+- choreography
+- Tobias Schwencke
+- composition
+- George Brenner
+- producing
+- Thorben Schumüller
+- stage, costume
+- Charlotte Beinhauer
+- script
+- Tim Dollmann
+- musical advice Hip Hop
+
+Programme:
+- »Masters of Ceremony« (German only)
+- Eine interdisziplinäre Performance mit Musik von Igor Strawinsky und
+- Read more
+- Read less
+
+Ticketing: Sold out € 5 | € 5 | Tickets € 5 € 5 | Tickets € 5 | € | 5 | Sold out | Remaining tickets occasionally available at box office | The cloakrooms are located on the 11th floor (fee: € 2). Jackets and handbags may be taken into the hall.
+
+Excerpt:
+String ensemble meets hip-hop crew: originating from Igor Stravinsky’s ballet »Apollon musagète«, the musicians of Ensemble Resonanz devise the new, crossover piece »Masters of Ceremony« with experts from the HipHop Academy in Hamburg Billstedt. Together, they ask what the ballet, premiered in 1928 in which the god Apollo dances with three muses, has got to do with us today and create new music from the original. The interplay of breakdancing, rap and string music produces such an extraordinary output, which is staged using scenery and visuals in the Grand Hall.
+
+Eine interdisziplinäre Performance mit Musik von Igor Strawinsky und
+
+
+==========================================================================================
+
+=== Prompt 2/10 ===
+Generated at: 2026-04-09T03:40:23.821534+00:00
+Source URL: https://www.elbphilharmonie.de/en/whats-on/school-concert-hiphop-academy-hamburg-ensemble-resonanz/24175
+
+# System Prompt
+
+Extract concert entities as strict JSON only. Return keys p (performers), w (works), v (venue), optional d (date), s (sold_out boolean), and pt (price_tags string list). Normalize to atomic list items: each performer must be one person or ensemble name only; each work must be one composition in program order. Do not combine multiple performers or works into one string item. Input may contain sections Event Metadata, Performers, and Programme with bullet lines. Prefer explicit values from those sections. Ignore non-entity labels like Start, End, Series, Find out more, Promoter, Supported by, and booklet/pdf references. For performer lines with roles/instruments, keep only the person or ensemble name. Treat ticketing lines as evidence for sold_out and pt, not as works. Extract concise ticket price tags exactly as shown in text when present (examples: 'EUR 39', '$45', 'ab 20 EUR', 'Free'). Each work item must include c (composer) and t (title), using empty strings when unknown. Do not match to external databases and do not add explanations or markdown.
+
+# User Prompt
+
+Concert listing text:
+Event Metadata:
+Name: School Concert »HipHop Academy Hamburg & Ensemble Resonanz«
+Venue: 
+Date: Thu, 9 Apr 2026 11:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/school-concert-hiphop-academy-hamburg-ensemble-resonanz/24175
+
+Performers:
+- Ensemble Resonanz
+- Barbara Bultmann
+- violin
+- Corinna Guthmann
+- violin
+- Skaistė Dikšaitytė
+- violin
+- Tom Glöckner
+- violin
+- Tim-Erik Winzer
+- viola
+- Maresi Stumpf
+- viola
+- Saskia Ogilvie
+- violoncello
+- Saerom Park
+- violoncello
+- John Eckhardt
+- double bass
+- HipHop Academy Hamburg
+- Andy Calypso
+- hip hop dance
+- Franklyn (Slunch) Kakyire
+- hip hop dance
+- Jenny Love
+- hip hop dance
+- Marco (Mallekid) Baaden
+- Breaking
+- Merve (Mer-C) Can
+- Breaking
+- Grace (Gege) Owusu
+- vocals
+- Sebastian (Sebó) Bosum
+- rap
+- Amir (107 Amir) Dacic
+- rap
+- Marlene Schleicher
+- stage direction
+- Professor Niels (Storm) Robitzky
+- choreography
+- Tobias Schwencke
+- composition
+- George Brenner
+- producing
+- Thorben Schumüller
+- stage, costume
+- Charlotte Beinhauer
+- script
+- Tim Dollmann
+- musical advice Hip Hop
+
+Programme:
+- »Masters of Ceremony« (German only)
+- Eine interdisziplinäre Performance mit Musik von Igor Strawinsky und
+- Read more
+- Read less
+
+Ticketing: Sold out € 5 | € 5 | Tickets € 5 € 5 | Tickets € 5 | € | 5 | Sold out | Remaining tickets occasionally available at box office | The cloakrooms are located on the 11th floor (fee: € 2). Jackets and handbags may be taken into the hall.
+
+Excerpt:
+String ensemble meets hip-hop crew: originating from Igor Stravinsky’s ballet »Apollon musagète«, the musicians of Ensemble Resonanz devise the new, crossover piece »Masters of Ceremony« with experts from the HipHop Academy in Hamburg Billstedt. Together, they ask what the ballet, premiered in 1928 in which the god Apollo dances with three muses, has got to do with us today and create new music from the original. The interplay of breakdancing, rap and string music produces such an extraordinary output, which is staged using scenery and visuals in the Grand Hall.
+
+Eine interdisziplinäre Performance mit Musik von Igor Strawinsky und
+
+Return JSON schema:
+{"p": ["string"], "w": [{"c": "string", "t": "string"}], "v": "string", "d": "string optional", "s": "boolean optional", "pt": ["string"]}
+
+# Raw Extraction Text
+
+Event Metadata:
+Name: School Concert »HipHop Academy Hamburg & Ensemble Resonanz«
+Venue: 
+Date: Thu, 9 Apr 2026 11:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/school-concert-hiphop-academy-hamburg-ensemble-resonanz/24175
+
+Performers:
+- Ensemble Resonanz
+- Barbara Bultmann
+- violin
+- Corinna Guthmann
+- violin
+- Skaistė Dikšaitytė
+- violin
+- Tom Glöckner
+- violin
+- Tim-Erik Winzer
+- viola
+- Maresi Stumpf
+- viola
+- Saskia Ogilvie
+- violoncello
+- Saerom Park
+- violoncello
+- John Eckhardt
+- double bass
+- HipHop Academy Hamburg
+- Andy Calypso
+- hip hop dance
+- Franklyn (Slunch) Kakyire
+- hip hop dance
+- Jenny Love
+- hip hop dance
+- Marco (Mallekid) Baaden
+- Breaking
+- Merve (Mer-C) Can
+- Breaking
+- Grace (Gege) Owusu
+- vocals
+- Sebastian (Sebó) Bosum
+- rap
+- Amir (107 Amir) Dacic
+- rap
+- Marlene Schleicher
+- stage direction
+- Professor Niels (Storm) Robitzky
+- choreography
+- Tobias Schwencke
+- composition
+- George Brenner
+- producing
+- Thorben Schumüller
+- stage, costume
+- Charlotte Beinhauer
+- script
+- Tim Dollmann
+- musical advice Hip Hop
+
+Programme:
+- »Masters of Ceremony« (German only)
+- Eine interdisziplinäre Performance mit Musik von Igor Strawinsky und
+- Read more
+- Read less
+
+Ticketing: Sold out € 5 | € 5 | Tickets € 5 € 5 | Tickets € 5 | € | 5 | Sold out | Remaining tickets occasionally available at box office | The cloakrooms are located on the 11th floor (fee: € 2). Jackets and handbags may be taken into the hall.
+
+Excerpt:
+String ensemble meets hip-hop crew: originating from Igor Stravinsky’s ballet »Apollon musagète«, the musicians of Ensemble Resonanz devise the new, crossover piece »Masters of Ceremony« with experts from the HipHop Academy in Hamburg Billstedt. Together, they ask what the ballet, premiered in 1928 in which the god Apollo dances with three muses, has got to do with us today and create new music from the original. The interplay of breakdancing, rap and string music produces such an extraordinary output, which is staged using scenery and visuals in the Grand Hall.
+
+Eine interdisziplinäre Performance mit Musik von Igor Strawinsky und
+
+
+==========================================================================================
+
+=== Prompt 3/10 ===
+Generated at: 2026-04-09T03:40:24.296086+00:00
+Source URL: https://www.elbphilharmonie.de/en/whats-on/klangzeit/23909
+
+# System Prompt
+
+Extract concert entities as strict JSON only. Return keys p (performers), w (works), v (venue), optional d (date), s (sold_out boolean), and pt (price_tags string list). Normalize to atomic list items: each performer must be one person or ensemble name only; each work must be one composition in program order. Do not combine multiple performers or works into one string item. Input may contain sections Event Metadata, Performers, and Programme with bullet lines. Prefer explicit values from those sections. Ignore non-entity labels like Start, End, Series, Find out more, Promoter, Supported by, and booklet/pdf references. For performer lines with roles/instruments, keep only the person or ensemble name. Treat ticketing lines as evidence for sold_out and pt, not as works. Extract concise ticket price tags exactly as shown in text when present (examples: 'EUR 39', '$45', 'ab 20 EUR', 'Free'). Each work item must include c (composer) and t (title), using empty strings when unknown. Do not match to external databases and do not add explanations or markdown.
+
+# User Prompt
+
+Concert listing text:
+Event Metadata:
+Name: Klangzeit
+Venue: 
+Date: Fri, 10 Apr 2026 11:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/klangzeit/23909
+
+Performers:
+- Ensemble Resonanz
+- Juditha Haeberlin
+- violin
+- Benjamin Spillner
+- violin
+- Swantje Tessmann
+- viola
+- Jörn Kellermann
+- violoncello
+- Benedict Ziervogel
+- double bass
+- Vanessa Heinisch
+- lute
+- Gregor Dierck, David Schlage, Franziska Stolz, Constantin Zill
+- Concept
+
+Programme:
+- »Klangzeit« (German only)
+- »Die Spieluhr«
+- Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+- Piotr I. Tschaikowsky
+- Der Nussknacker
+- Gioachino Rossini
+- Sonate a Quattro Nr. 3
+- Biagio Marini
+- Sonata sopra »la Monica« / Arr. Gregor Dierck
+- Kanon
+- Kanon
+- Dionisio Aguado
+- Estudio Nr. 3
+- Erich Wolfgang Korngold
+- Streichquartett Nr. 2 Es-Dur op. 26
+- Philip Glass
+- Streichquartett Nr. 3 »Mishima«
+- Reinhold Moritzewitsch Glière
+- Berceuse aus Huit Morceaux op. 39
+- Wiegenlied aus Ostafrika
+- Lala mtoto lala
+- Claudio Monteverdi
+- L’incoronazione di Poppea / Dramma in musica in Prolog und drei Akten
+- Dario Castello
+- Sonata X à 4 »In ecco«
+- Volkslied
+- Es klappert die Mühle am rauschenden Bach
+- John Rutter
+- Suite for Strings
+- Dmitri Schostakowitsch
+- Fünf Stücke für zwei Violinen und Klavier / Bearb. Benedict Ziervogel
+- Johann Sebastian Bach
+- Aria and a set of 30 variations / Clavier Übung IV, BWV 988 »Goldberg Variations«
+- Lied
+- Das alte Spinnrad / Bearbeitung von Gregor Dierck und David Schlage
+- Camille Saint-Saëns
+- Le cygne (The Swan) / from: Le carnaval des animaux (The Carnival of the Animals)
+- Read more
+- Read less
+
+Ticketing: Tickets from € 6 € 6 | 12 | Tickets from € 6 | from € | 6 | € 6 | 12
+
+Excerpt:
+Listening to live music is a wonderful experience. In the »Klangzeit« (Sound Time) concerts, you can close your eyes and escape everyday life for a moment. In the entertaining, hour-long concerts featuring the string players of Ensemble Resonanz, you can listen in a relaxed atmosphere, express yourself, sing along to well-known songs and move freely. Here, everyone can be themselves. This makes the format particularly suitable for people with dementia and their relatives. All venues are accessible.
+
+»Die Spieluhr« Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+
+Gioachino Rossini Sonate a Quattro Nr. 3
+
+Biagio Marini Sonata sopra »la Monica« / Arr. Gregor Dierck
+
+Return JSON schema:
+{"p": ["string"], "w": [{"c": "string", "t": "string"}], "v": "string", "d": "string optional", "s": "boolean optional", "pt": ["string"]}
+
+# Raw Extraction Text
+
+Event Metadata:
+Name: Klangzeit
+Venue: 
+Date: Fri, 10 Apr 2026 11:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/klangzeit/23909
+
+Performers:
+- Ensemble Resonanz
+- Juditha Haeberlin
+- violin
+- Benjamin Spillner
+- violin
+- Swantje Tessmann
+- viola
+- Jörn Kellermann
+- violoncello
+- Benedict Ziervogel
+- double bass
+- Vanessa Heinisch
+- lute
+- Gregor Dierck, David Schlage, Franziska Stolz, Constantin Zill
+- Concept
+
+Programme:
+- »Klangzeit« (German only)
+- »Die Spieluhr«
+- Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+- Piotr I. Tschaikowsky
+- Der Nussknacker
+- Gioachino Rossini
+- Sonate a Quattro Nr. 3
+- Biagio Marini
+- Sonata sopra »la Monica« / Arr. Gregor Dierck
+- Kanon
+- Kanon
+- Dionisio Aguado
+- Estudio Nr. 3
+- Erich Wolfgang Korngold
+- Streichquartett Nr. 2 Es-Dur op. 26
+- Philip Glass
+- Streichquartett Nr. 3 »Mishima«
+- Reinhold Moritzewitsch Glière
+- Berceuse aus Huit Morceaux op. 39
+- Wiegenlied aus Ostafrika
+- Lala mtoto lala
+- Claudio Monteverdi
+- L’incoronazione di Poppea / Dramma in musica in Prolog und drei Akten
+- Dario Castello
+- Sonata X à 4 »In ecco«
+- Volkslied
+- Es klappert die Mühle am rauschenden Bach
+- John Rutter
+- Suite for Strings
+- Dmitri Schostakowitsch
+- Fünf Stücke für zwei Violinen und Klavier / Bearb. Benedict Ziervogel
+- Johann Sebastian Bach
+- Aria and a set of 30 variations / Clavier Übung IV, BWV 988 »Goldberg Variations«
+- Lied
+- Das alte Spinnrad / Bearbeitung von Gregor Dierck und David Schlage
+- Camille Saint-Saëns
+- Le cygne (The Swan) / from: Le carnaval des animaux (The Carnival of the Animals)
+- Read more
+- Read less
+
+Ticketing: Tickets from € 6 € 6 | 12 | Tickets from € 6 | from € | 6 | € 6 | 12
+
+Excerpt:
+Listening to live music is a wonderful experience. In the »Klangzeit« (Sound Time) concerts, you can close your eyes and escape everyday life for a moment. In the entertaining, hour-long concerts featuring the string players of Ensemble Resonanz, you can listen in a relaxed atmosphere, express yourself, sing along to well-known songs and move freely. Here, everyone can be themselves. This makes the format particularly suitable for people with dementia and their relatives. All venues are accessible.
+
+»Die Spieluhr« Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+
+Gioachino Rossini Sonate a Quattro Nr. 3
+
+Biagio Marini Sonata sopra »la Monica« / Arr. Gregor Dierck
+
+
+==========================================================================================
+
+=== Prompt 4/10 ===
+Generated at: 2026-04-09T03:40:24.416193+00:00
+Source URL: https://www.elbphilharmonie.de/en/whats-on/klangzeit/23907
+
+# System Prompt
+
+Extract concert entities as strict JSON only. Return keys p (performers), w (works), v (venue), optional d (date), s (sold_out boolean), and pt (price_tags string list). Normalize to atomic list items: each performer must be one person or ensemble name only; each work must be one composition in program order. Do not combine multiple performers or works into one string item. Input may contain sections Event Metadata, Performers, and Programme with bullet lines. Prefer explicit values from those sections. Ignore non-entity labels like Start, End, Series, Find out more, Promoter, Supported by, and booklet/pdf references. For performer lines with roles/instruments, keep only the person or ensemble name. Treat ticketing lines as evidence for sold_out and pt, not as works. Extract concise ticket price tags exactly as shown in text when present (examples: 'EUR 39', '$45', 'ab 20 EUR', 'Free'). Each work item must include c (composer) and t (title), using empty strings when unknown. Do not match to external databases and do not add explanations or markdown.
+
+# User Prompt
+
+Concert listing text:
+Event Metadata:
+Name: Klangzeit
+Venue: 
+Date: Thu, 9 Apr 2026 11:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/klangzeit/23907
+
+Performers:
+- Ensemble Resonanz
+- Juditha Haeberlin
+- violin
+- Benjamin Spillner
+- violin
+- Swantje Tessmann
+- viola
+- Jörn Kellermann
+- violoncello
+- Benedict Ziervogel
+- double bass
+- Vanessa Heinisch
+- lute
+- Gregor Dierck, David Schlage, Franziska Stolz, Constantin Zill
+- Concept
+
+Programme:
+- »Klangzeit« (German only)
+- »Die Spieluhr«
+- Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+- Piotr I. Tschaikowsky
+- Der Nussknacker
+- Gioachino Rossini
+- Sonate a Quattro Nr. 3
+- Biagio Marini
+- Sonata sopra »la Monica« / Arr. Gregor Dierck
+- Kanon
+- Kanon
+- Dionisio Aguado
+- Estudio Nr. 3
+- Erich Wolfgang Korngold
+- Streichquartett Nr. 2 Es-Dur op. 26
+- Philip Glass
+- Streichquartett Nr. 3 »Mishima«
+- Reinhold Moritzewitsch Glière
+- Berceuse aus Huit Morceaux op. 39
+- Wiegenlied aus Ostafrika
+- Lala mtoto lala
+- Claudio Monteverdi
+- L’incoronazione di Poppea / Dramma in musica in Prolog und drei Akten
+- Dario Castello
+- Sonata X à 4 »In ecco«
+- Volkslied
+- Es klappert die Mühle am rauschenden Bach
+- John Rutter
+- Suite for Strings
+- Dmitri Schostakowitsch
+- Fünf Stücke für zwei Violinen und Klavier / Bearb. Benedict Ziervogel
+- Johann Sebastian Bach
+- Aria and a set of 30 variations / Clavier Übung IV, BWV 988 »Goldberg Variations«
+- Lied
+- Das alte Spinnrad / Bearbeitung von Gregor Dierck und David Schlage
+- Camille Saint-Saëns
+- Le cygne (The Swan) / from: Le carnaval des animaux (The Carnival of the Animals)
+- Read more
+- Read less
+
+Ticketing: Tickets from € 6 € 6 | 12 | Tickets from € 6 | from € | 6 | € 6 | 12
+
+Excerpt:
+Listening to live music is a wonderful experience. In the »Klangzeit« (Sound Time) concerts, you can close your eyes and escape everyday life for a moment. In the entertaining, hour-long concerts featuring the string players of Ensemble Resonanz, you can listen in a relaxed atmosphere, express yourself, sing along to well-known songs and move freely. Here, everyone can be themselves. This makes the format particularly suitable for people with dementia and their relatives. All venues are accessible.
+
+»Die Spieluhr« Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+
+Gioachino Rossini Sonate a Quattro Nr. 3
+
+Biagio Marini Sonata sopra »la Monica« / Arr. Gregor Dierck
+
+Return JSON schema:
+{"p": ["string"], "w": [{"c": "string", "t": "string"}], "v": "string", "d": "string optional", "s": "boolean optional", "pt": ["string"]}
+
+# Raw Extraction Text
+
+Event Metadata:
+Name: Klangzeit
+Venue: 
+Date: Thu, 9 Apr 2026 11:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/klangzeit/23907
+
+Performers:
+- Ensemble Resonanz
+- Juditha Haeberlin
+- violin
+- Benjamin Spillner
+- violin
+- Swantje Tessmann
+- viola
+- Jörn Kellermann
+- violoncello
+- Benedict Ziervogel
+- double bass
+- Vanessa Heinisch
+- lute
+- Gregor Dierck, David Schlage, Franziska Stolz, Constantin Zill
+- Concept
+
+Programme:
+- »Klangzeit« (German only)
+- »Die Spieluhr«
+- Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+- Piotr I. Tschaikowsky
+- Der Nussknacker
+- Gioachino Rossini
+- Sonate a Quattro Nr. 3
+- Biagio Marini
+- Sonata sopra »la Monica« / Arr. Gregor Dierck
+- Kanon
+- Kanon
+- Dionisio Aguado
+- Estudio Nr. 3
+- Erich Wolfgang Korngold
+- Streichquartett Nr. 2 Es-Dur op. 26
+- Philip Glass
+- Streichquartett Nr. 3 »Mishima«
+- Reinhold Moritzewitsch Glière
+- Berceuse aus Huit Morceaux op. 39
+- Wiegenlied aus Ostafrika
+- Lala mtoto lala
+- Claudio Monteverdi
+- L’incoronazione di Poppea / Dramma in musica in Prolog und drei Akten
+- Dario Castello
+- Sonata X à 4 »In ecco«
+- Volkslied
+- Es klappert die Mühle am rauschenden Bach
+- John Rutter
+- Suite for Strings
+- Dmitri Schostakowitsch
+- Fünf Stücke für zwei Violinen und Klavier / Bearb. Benedict Ziervogel
+- Johann Sebastian Bach
+- Aria and a set of 30 variations / Clavier Übung IV, BWV 988 »Goldberg Variations«
+- Lied
+- Das alte Spinnrad / Bearbeitung von Gregor Dierck und David Schlage
+- Camille Saint-Saëns
+- Le cygne (The Swan) / from: Le carnaval des animaux (The Carnival of the Animals)
+- Read more
+- Read less
+
+Ticketing: Tickets from € 6 € 6 | 12 | Tickets from € 6 | from € | 6 | € 6 | 12
+
+Excerpt:
+Listening to live music is a wonderful experience. In the »Klangzeit« (Sound Time) concerts, you can close your eyes and escape everyday life for a moment. In the entertaining, hour-long concerts featuring the string players of Ensemble Resonanz, you can listen in a relaxed atmosphere, express yourself, sing along to well-known songs and move freely. Here, everyone can be themselves. This makes the format particularly suitable for people with dementia and their relatives. All venues are accessible.
+
+»Die Spieluhr« Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+
+Gioachino Rossini Sonate a Quattro Nr. 3
+
+Biagio Marini Sonata sopra »la Monica« / Arr. Gregor Dierck
+
+
+==========================================================================================
+
+=== Prompt 5/10 ===
+Generated at: 2026-04-09T03:40:25.016711+00:00
+Source URL: https://www.elbphilharmonie.de/en/whats-on/klangzeit/23908
+
+# System Prompt
+
+Extract concert entities as strict JSON only. Return keys p (performers), w (works), v (venue), optional d (date), s (sold_out boolean), and pt (price_tags string list). Normalize to atomic list items: each performer must be one person or ensemble name only; each work must be one composition in program order. Do not combine multiple performers or works into one string item. Input may contain sections Event Metadata, Performers, and Programme with bullet lines. Prefer explicit values from those sections. Ignore non-entity labels like Start, End, Series, Find out more, Promoter, Supported by, and booklet/pdf references. For performer lines with roles/instruments, keep only the person or ensemble name. Treat ticketing lines as evidence for sold_out and pt, not as works. Extract concise ticket price tags exactly as shown in text when present (examples: 'EUR 39', '$45', 'ab 20 EUR', 'Free'). Each work item must include c (composer) and t (title), using empty strings when unknown. Do not match to external databases and do not add explanations or markdown.
+
+# User Prompt
+
+Concert listing text:
+Event Metadata:
+Name: Klangzeit
+Venue: 
+Date: Thu, 9 Apr 2026 15:30
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/klangzeit/23908
+
+Performers:
+- Ensemble Resonanz
+- Juditha Haeberlin
+- violin
+- Benjamin Spillner
+- violin
+- Swantje Tessmann
+- viola
+- Jörn Kellermann
+- violoncello
+- Benedict Ziervogel
+- double bass
+- Vanessa Heinisch
+- lute
+- Gregor Dierck, David Schlage, Franziska Stolz, Constantin Zill
+- Concept
+
+Programme:
+- »Klangzeit« (German only)
+- »Die Spieluhr«
+- Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+- Piotr I. Tschaikowsky
+- Der Nussknacker
+- Gioachino Rossini
+- Sonate a Quattro Nr. 3
+- Biagio Marini
+- Sonata sopra »la Monica« / Arr. Gregor Dierck
+- Kanon
+- Kanon
+- Dionisio Aguado
+- Estudio Nr. 3
+- Erich Wolfgang Korngold
+- Streichquartett Nr. 2 Es-Dur op. 26
+- Philip Glass
+- Streichquartett Nr. 3 »Mishima«
+- Reinhold Moritzewitsch Glière
+- Berceuse aus Huit Morceaux op. 39
+- Wiegenlied aus Ostafrika
+- Lala mtoto lala
+- Claudio Monteverdi
+- L’incoronazione di Poppea / Dramma in musica in Prolog und drei Akten
+- Dario Castello
+- Sonata X à 4 »In ecco«
+- Volkslied
+- Es klappert die Mühle am rauschenden Bach
+- John Rutter
+- Suite for Strings
+- Dmitri Schostakowitsch
+- Fünf Stücke für zwei Violinen und Klavier / Bearb. Benedict Ziervogel
+- Johann Sebastian Bach
+- Aria and a set of 30 variations / Clavier Übung IV, BWV 988 »Goldberg Variations«
+- Lied
+- Das alte Spinnrad / Bearbeitung von Gregor Dierck und David Schlage
+- Camille Saint-Saëns
+- Le cygne (The Swan) / from: Le carnaval des animaux (The Carnival of the Animals)
+- Read more
+- Read less
+
+Ticketing: Sold out € 6 | 12 | € 6 | 12 | Tickets € 6 | 12 | Tickets | Sold out | Remaining tickets occasionally available at box office
+
+Excerpt:
+Listening to live music is a wonderful experience. In the »Klangzeit« (Sound Time) concerts, you can close your eyes and escape everyday life for a moment. In the entertaining, hour-long concerts featuring the string players of Ensemble Resonanz, you can listen in a relaxed atmosphere, express yourself, sing along to well-known songs and move freely. Here, everyone can be themselves. This makes the format particularly suitable for people with dementia and their relatives. All venues are accessible.
+
+»Die Spieluhr« Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+
+Gioachino Rossini Sonate a Quattro Nr. 3
+
+Biagio Marini Sonata sopra »la Monica« / Arr. Gregor Dierck
+
+Return JSON schema:
+{"p": ["string"], "w": [{"c": "string", "t": "string"}], "v": "string", "d": "string optional", "s": "boolean optional", "pt": ["string"]}
+
+# Raw Extraction Text
+
+Event Metadata:
+Name: Klangzeit
+Venue: 
+Date: Thu, 9 Apr 2026 15:30
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/klangzeit/23908
+
+Performers:
+- Ensemble Resonanz
+- Juditha Haeberlin
+- violin
+- Benjamin Spillner
+- violin
+- Swantje Tessmann
+- viola
+- Jörn Kellermann
+- violoncello
+- Benedict Ziervogel
+- double bass
+- Vanessa Heinisch
+- lute
+- Gregor Dierck, David Schlage, Franziska Stolz, Constantin Zill
+- Concept
+
+Programme:
+- »Klangzeit« (German only)
+- »Die Spieluhr«
+- Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+- Piotr I. Tschaikowsky
+- Der Nussknacker
+- Gioachino Rossini
+- Sonate a Quattro Nr. 3
+- Biagio Marini
+- Sonata sopra »la Monica« / Arr. Gregor Dierck
+- Kanon
+- Kanon
+- Dionisio Aguado
+- Estudio Nr. 3
+- Erich Wolfgang Korngold
+- Streichquartett Nr. 2 Es-Dur op. 26
+- Philip Glass
+- Streichquartett Nr. 3 »Mishima«
+- Reinhold Moritzewitsch Glière
+- Berceuse aus Huit Morceaux op. 39
+- Wiegenlied aus Ostafrika
+- Lala mtoto lala
+- Claudio Monteverdi
+- L’incoronazione di Poppea / Dramma in musica in Prolog und drei Akten
+- Dario Castello
+- Sonata X à 4 »In ecco«
+- Volkslied
+- Es klappert die Mühle am rauschenden Bach
+- John Rutter
+- Suite for Strings
+- Dmitri Schostakowitsch
+- Fünf Stücke für zwei Violinen und Klavier / Bearb. Benedict Ziervogel
+- Johann Sebastian Bach
+- Aria and a set of 30 variations / Clavier Übung IV, BWV 988 »Goldberg Variations«
+- Lied
+- Das alte Spinnrad / Bearbeitung von Gregor Dierck und David Schlage
+- Camille Saint-Saëns
+- Le cygne (The Swan) / from: Le carnaval des animaux (The Carnival of the Animals)
+- Read more
+- Read less
+
+Ticketing: Sold out € 6 | 12 | € 6 | 12 | Tickets € 6 | 12 | Tickets | Sold out | Remaining tickets occasionally available at box office
+
+Excerpt:
+Listening to live music is a wonderful experience. In the »Klangzeit« (Sound Time) concerts, you can close your eyes and escape everyday life for a moment. In the entertaining, hour-long concerts featuring the string players of Ensemble Resonanz, you can listen in a relaxed atmosphere, express yourself, sing along to well-known songs and move freely. Here, everyone can be themselves. This makes the format particularly suitable for people with dementia and their relatives. All venues are accessible.
+
+»Die Spieluhr« Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+
+Gioachino Rossini Sonate a Quattro Nr. 3
+
+Biagio Marini Sonata sopra »la Monica« / Arr. Gregor Dierck
+
+
+==========================================================================================
+
+=== Prompt 6/10 ===
+Generated at: 2026-04-09T03:40:26.002265+00:00
+Source URL: https://www.elbphilharmonie.de/en/whats-on/klangzeit/23910
+
+# System Prompt
+
+Extract concert entities as strict JSON only. Return keys p (performers), w (works), v (venue), optional d (date), s (sold_out boolean), and pt (price_tags string list). Normalize to atomic list items: each performer must be one person or ensemble name only; each work must be one composition in program order. Do not combine multiple performers or works into one string item. Input may contain sections Event Metadata, Performers, and Programme with bullet lines. Prefer explicit values from those sections. Ignore non-entity labels like Start, End, Series, Find out more, Promoter, Supported by, and booklet/pdf references. For performer lines with roles/instruments, keep only the person or ensemble name. Treat ticketing lines as evidence for sold_out and pt, not as works. Extract concise ticket price tags exactly as shown in text when present (examples: 'EUR 39', '$45', 'ab 20 EUR', 'Free'). Each work item must include c (composer) and t (title), using empty strings when unknown. Do not match to external databases and do not add explanations or markdown.
+
+# User Prompt
+
+Concert listing text:
+Event Metadata:
+Name: Klangzeit
+Venue: 
+Date: Fri, 10 Apr 2026 15:30
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/klangzeit/23910
+
+Performers:
+- Ensemble Resonanz
+- Juditha Haeberlin
+- violin
+- Benjamin Spillner
+- violin
+- Swantje Tessmann
+- viola
+- Jörn Kellermann
+- violoncello
+- Benedict Ziervogel
+- double bass
+- Vanessa Heinisch
+- lute
+- Gregor Dierck, David Schlage, Franziska Stolz, Constantin Zill
+- Concept
+
+Programme:
+- »Klangzeit« (German only)
+- »Die Spieluhr«
+- Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+- Piotr I. Tschaikowsky
+- Der Nussknacker
+- Gioachino Rossini
+- Sonate a Quattro Nr. 3
+- Biagio Marini
+- Sonata sopra »la Monica« / Arr. Gregor Dierck
+- Kanon
+- Kanon
+- Dionisio Aguado
+- Estudio Nr. 3
+- Erich Wolfgang Korngold
+- Streichquartett Nr. 2 Es-Dur op. 26
+- Philip Glass
+- Streichquartett Nr. 3 »Mishima«
+- Reinhold Moritzewitsch Glière
+- Berceuse aus Huit Morceaux op. 39
+- Wiegenlied aus Ostafrika
+- Lala mtoto lala
+- Claudio Monteverdi
+- L’incoronazione di Poppea / Dramma in musica in Prolog und drei Akten
+- Dario Castello
+- Sonata X à 4 »In ecco«
+- Volkslied
+- Es klappert die Mühle am rauschenden Bach
+- John Rutter
+- Suite for Strings
+- Dmitri Schostakowitsch
+- Fünf Stücke für zwei Violinen und Klavier / Bearb. Benedict Ziervogel
+- Johann Sebastian Bach
+- Aria and a set of 30 variations / Clavier Übung IV, BWV 988 »Goldberg Variations«
+- Lied
+- Das alte Spinnrad / Bearbeitung von Gregor Dierck und David Schlage
+- Camille Saint-Saëns
+- Le cygne (The Swan) / from: Le carnaval des animaux (The Carnival of the Animals)
+- Read more
+- Read less
+
+Ticketing: Tickets from € 6 € 6 | 12 | Tickets from € 6 | from € | 6 | € 6 | 12
+
+Excerpt:
+Listening to live music is a wonderful experience. In the »Klangzeit« (Sound Time) concerts, you can close your eyes and escape everyday life for a moment. In the entertaining, hour-long concerts featuring the string players of Ensemble Resonanz, you can listen in a relaxed atmosphere, express yourself, sing along to well-known songs and move freely. Here, everyone can be themselves. This makes the format particularly suitable for people with dementia and their relatives. All venues are accessible.
+
+»Die Spieluhr« Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+
+Gioachino Rossini Sonate a Quattro Nr. 3
+
+Biagio Marini Sonata sopra »la Monica« / Arr. Gregor Dierck
+
+Return JSON schema:
+{"p": ["string"], "w": [{"c": "string", "t": "string"}], "v": "string", "d": "string optional", "s": "boolean optional", "pt": ["string"]}
+
+# Raw Extraction Text
+
+Event Metadata:
+Name: Klangzeit
+Venue: 
+Date: Fri, 10 Apr 2026 15:30
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/klangzeit/23910
+
+Performers:
+- Ensemble Resonanz
+- Juditha Haeberlin
+- violin
+- Benjamin Spillner
+- violin
+- Swantje Tessmann
+- viola
+- Jörn Kellermann
+- violoncello
+- Benedict Ziervogel
+- double bass
+- Vanessa Heinisch
+- lute
+- Gregor Dierck, David Schlage, Franziska Stolz, Constantin Zill
+- Concept
+
+Programme:
+- »Klangzeit« (German only)
+- »Die Spieluhr«
+- Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+- Piotr I. Tschaikowsky
+- Der Nussknacker
+- Gioachino Rossini
+- Sonate a Quattro Nr. 3
+- Biagio Marini
+- Sonata sopra »la Monica« / Arr. Gregor Dierck
+- Kanon
+- Kanon
+- Dionisio Aguado
+- Estudio Nr. 3
+- Erich Wolfgang Korngold
+- Streichquartett Nr. 2 Es-Dur op. 26
+- Philip Glass
+- Streichquartett Nr. 3 »Mishima«
+- Reinhold Moritzewitsch Glière
+- Berceuse aus Huit Morceaux op. 39
+- Wiegenlied aus Ostafrika
+- Lala mtoto lala
+- Claudio Monteverdi
+- L’incoronazione di Poppea / Dramma in musica in Prolog und drei Akten
+- Dario Castello
+- Sonata X à 4 »In ecco«
+- Volkslied
+- Es klappert die Mühle am rauschenden Bach
+- John Rutter
+- Suite for Strings
+- Dmitri Schostakowitsch
+- Fünf Stücke für zwei Violinen und Klavier / Bearb. Benedict Ziervogel
+- Johann Sebastian Bach
+- Aria and a set of 30 variations / Clavier Übung IV, BWV 988 »Goldberg Variations«
+- Lied
+- Das alte Spinnrad / Bearbeitung von Gregor Dierck und David Schlage
+- Camille Saint-Saëns
+- Le cygne (The Swan) / from: Le carnaval des animaux (The Carnival of the Animals)
+- Read more
+- Read less
+
+Ticketing: Tickets from € 6 € 6 | 12 | Tickets from € 6 | from € | 6 | € 6 | 12
+
+Excerpt:
+Listening to live music is a wonderful experience. In the »Klangzeit« (Sound Time) concerts, you can close your eyes and escape everyday life for a moment. In the entertaining, hour-long concerts featuring the string players of Ensemble Resonanz, you can listen in a relaxed atmosphere, express yourself, sing along to well-known songs and move freely. Here, everyone can be themselves. This makes the format particularly suitable for people with dementia and their relatives. All venues are accessible.
+
+»Die Spieluhr« Werke von Gioachino Rossini, Camille Saint-Saëns und Claudio Monteverdi
+
+Gioachino Rossini Sonate a Quattro Nr. 3
+
+Biagio Marini Sonata sopra »la Monica« / Arr. Gregor Dierck
+
+
+==========================================================================================
+
+=== Prompt 7/10 ===
+Generated at: 2026-04-09T03:40:26.450014+00:00
+Source URL: https://www.elbphilharmonie.de/en/whats-on/majal/27740
+
+# System Prompt
+
+Extract concert entities as strict JSON only. Return keys p (performers), w (works), v (venue), optional d (date), s (sold_out boolean), and pt (price_tags string list). Normalize to atomic list items: each performer must be one person or ensemble name only; each work must be one composition in program order. Do not combine multiple performers or works into one string item. Input may contain sections Event Metadata, Performers, and Programme with bullet lines. Prefer explicit values from those sections. Ignore non-entity labels like Start, End, Series, Find out more, Promoter, Supported by, and booklet/pdf references. For performer lines with roles/instruments, keep only the person or ensemble name. Treat ticketing lines as evidence for sold_out and pt, not as works. Extract concise ticket price tags exactly as shown in text when present (examples: 'EUR 39', '$45', 'ab 20 EUR', 'Free'). Each work item must include c (composer) and t (title), using empty strings when unknown. Do not match to external databases and do not add explanations or markdown.
+
+# User Prompt
+
+Concert listing text:
+Event Metadata:
+Name: MAJÄL مجال
+Venue: 
+Date: Thu, 9 Apr 2026 18:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/majal/27740
+
+Performers:
+- MAJÄL مجال
+- Fadhel Boubaker
+- oud
+- Matthias Kurth
+- guitar
+- Konrad Wiemann
+- percussion
+
+Programme:
+- Jazz at the Kulturcafé / Please note the change of venue
+
+Ticketing: Rate per hour or part thereof: €4.50 | Night rate (18:00–06:00): maximum €11 | 24-hour rate: maximum €30
+
+Excerpt:
+The Arabic word MAJÄL مجال means area, space or possibility, depending on the context. The trio consists of Fadhel Boubaker (oud, Tunis), Matthias Kurth (guitar, Cologne) and Konrad Wiemann (percussion, Berlin). The sound of the Arabic lute is characteristic of MAJÄL’s music. Oud virtuoso Fadhel Boubaker elicits a wide variety of timbres from his instrument, and together with electric guitar and percussion, a delicate web of lively rhythms, strong melodies and jazz harmonies is created. The three musicians constantly switch roles and improvise within and sometimes outside their compositions, creating expressive music that ranges from jazz to rock to imaginary folklore – always with influences from Arabic maqam music. Please note: For organisational reasons, the concert has been relocated to Studio E of the Laeiszhalle.
+
+Please note: For organisational reasons, the concert has been relocated to Studio E of the Laeiszhalle.
+
+Return JSON schema:
+{"p": ["string"], "w": [{"c": "string", "t": "string"}], "v": "string", "d": "string optional", "s": "boolean optional", "pt": ["string"]}
+
+# Raw Extraction Text
+
+Event Metadata:
+Name: MAJÄL مجال
+Venue: 
+Date: Thu, 9 Apr 2026 18:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/majal/27740
+
+Performers:
+- MAJÄL مجال
+- Fadhel Boubaker
+- oud
+- Matthias Kurth
+- guitar
+- Konrad Wiemann
+- percussion
+
+Programme:
+- Jazz at the Kulturcafé / Please note the change of venue
+
+Ticketing: Rate per hour or part thereof: €4.50 | Night rate (18:00–06:00): maximum €11 | 24-hour rate: maximum €30
+
+Excerpt:
+The Arabic word MAJÄL مجال means area, space or possibility, depending on the context. The trio consists of Fadhel Boubaker (oud, Tunis), Matthias Kurth (guitar, Cologne) and Konrad Wiemann (percussion, Berlin). The sound of the Arabic lute is characteristic of MAJÄL’s music. Oud virtuoso Fadhel Boubaker elicits a wide variety of timbres from his instrument, and together with electric guitar and percussion, a delicate web of lively rhythms, strong melodies and jazz harmonies is created. The three musicians constantly switch roles and improvise within and sometimes outside their compositions, creating expressive music that ranges from jazz to rock to imaginary folklore – always with influences from Arabic maqam music. Please note: For organisational reasons, the concert has been relocated to Studio E of the Laeiszhalle.
+
+Please note: For organisational reasons, the concert has been relocated to Studio E of the Laeiszhalle.
+
+
+==========================================================================================
+
+=== Prompt 8/10 ===
+Generated at: 2026-04-09T03:40:26.672748+00:00
+Source URL: https://www.elbphilharmonie.de/en/whats-on/hiphop-academy-ensemble-resonanz/23238
+
+# System Prompt
+
+Extract concert entities as strict JSON only. Return keys p (performers), w (works), v (venue), optional d (date), s (sold_out boolean), and pt (price_tags string list). Normalize to atomic list items: each performer must be one person or ensemble name only; each work must be one composition in program order. Do not combine multiple performers or works into one string item. Input may contain sections Event Metadata, Performers, and Programme with bullet lines. Prefer explicit values from those sections. Ignore non-entity labels like Start, End, Series, Find out more, Promoter, Supported by, and booklet/pdf references. For performer lines with roles/instruments, keep only the person or ensemble name. Treat ticketing lines as evidence for sold_out and pt, not as works. Extract concise ticket price tags exactly as shown in text when present (examples: 'EUR 39', '$45', 'ab 20 EUR', 'Free'). Each work item must include c (composer) and t (title), using empty strings when unknown. Do not match to external databases and do not add explanations or markdown.
+
+# User Prompt
+
+Concert listing text:
+Event Metadata:
+Name: HipHop Academy & Ensemble Resonanz
+Venue: 
+Date: Thu, 9 Apr 2026 18:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/hiphop-academy-ensemble-resonanz/23238
+
+Performers:
+- Ensemble Resonanz
+- Barbara Bultmann
+- violin
+- Corinna Guthmann
+- violin
+- Skaistė Dikšaitytė
+- violin
+- Tom Glöckner
+- violin
+- Tim-Erik Winzer
+- viola
+- Maresi Stumpf
+- viola
+- Saskia Ogilvie
+- violoncello
+- Saerom Park
+- violoncello
+- John Eckhardt
+- double bass
+- HipHop Academy Hamburg
+- Andy Calypso
+- hip hop dance
+- Franklyn (Slunch) Kakyire
+- hip hop dance
+- Jenny Love
+- hip hop dance
+- Marco (Mallekid) Baaden
+- Breaking
+- Merve (Mer-C) Can
+- Breaking
+- Grace (Gege) Owusu
+- vocals
+- Sebastian (Sebó) Bosum
+- rap
+- Amir (107 Amir) Dacic
+- rap
+- Marlene Schleicher
+- stage direction
+- Professor Niels (Storm) Robitzky
+- choreography
+- Tobias Schwencke
+- composition
+- George Brenner
+- producing
+- Thorben Schumüller
+- stage, costume
+- Charlotte Beinhauer
+- script
+- Tim Dollmann
+- musical advice Hip Hop
+
+Programme:
+- »Masters of Ceremony« (German only)
+- Eine interdisziplinäre Performance mit Musik von Igor Strawinsky und
+- Read more
+- Read less
+
+Ticketing: Sold out € 6 | 12 | 12 | 18 | 24 | 36 | € 6 | 12 | 12 | 18 | 24 | 36 | Tickets € 6 | 12 | 12 | 18 | 24 | 36 | Tickets | Sold out | Remaining tickets occasionally available at box office | The cloakrooms are located on the 11th floor (fee: € 2). Jackets and handbags may be taken into the hall.
+
+Excerpt:
+String ensemble meets hip-hop crew: originating from Igor Stravinsky’s ballet »Apollon musagète«, the musicians of Ensemble Resonanz devise the new, crossover piece »Masters of Ceremony« with experts from the HipHop Academy in Hamburg Billstedt. Together, they ask what the ballet, premiered in 1928 in which the god Apollo dances with three muses, has got to do with us today and create new music from the original. The interplay of breakdancing, rap and string music produces such an extraordinary output, which is staged using scenery and visuals in the Grand Hall.
+
+Eine interdisziplinäre Performance mit Musik von Igor Strawinsky und
+
+Return JSON schema:
+{"p": ["string"], "w": [{"c": "string", "t": "string"}], "v": "string", "d": "string optional", "s": "boolean optional", "pt": ["string"]}
+
+# Raw Extraction Text
+
+Event Metadata:
+Name: HipHop Academy & Ensemble Resonanz
+Venue: 
+Date: Thu, 9 Apr 2026 18:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/hiphop-academy-ensemble-resonanz/23238
+
+Performers:
+- Ensemble Resonanz
+- Barbara Bultmann
+- violin
+- Corinna Guthmann
+- violin
+- Skaistė Dikšaitytė
+- violin
+- Tom Glöckner
+- violin
+- Tim-Erik Winzer
+- viola
+- Maresi Stumpf
+- viola
+- Saskia Ogilvie
+- violoncello
+- Saerom Park
+- violoncello
+- John Eckhardt
+- double bass
+- HipHop Academy Hamburg
+- Andy Calypso
+- hip hop dance
+- Franklyn (Slunch) Kakyire
+- hip hop dance
+- Jenny Love
+- hip hop dance
+- Marco (Mallekid) Baaden
+- Breaking
+- Merve (Mer-C) Can
+- Breaking
+- Grace (Gege) Owusu
+- vocals
+- Sebastian (Sebó) Bosum
+- rap
+- Amir (107 Amir) Dacic
+- rap
+- Marlene Schleicher
+- stage direction
+- Professor Niels (Storm) Robitzky
+- choreography
+- Tobias Schwencke
+- composition
+- George Brenner
+- producing
+- Thorben Schumüller
+- stage, costume
+- Charlotte Beinhauer
+- script
+- Tim Dollmann
+- musical advice Hip Hop
+
+Programme:
+- »Masters of Ceremony« (German only)
+- Eine interdisziplinäre Performance mit Musik von Igor Strawinsky und
+- Read more
+- Read less
+
+Ticketing: Sold out € 6 | 12 | 12 | 18 | 24 | 36 | € 6 | 12 | 12 | 18 | 24 | 36 | Tickets € 6 | 12 | 12 | 18 | 24 | 36 | Tickets | Sold out | Remaining tickets occasionally available at box office | The cloakrooms are located on the 11th floor (fee: € 2). Jackets and handbags may be taken into the hall.
+
+Excerpt:
+String ensemble meets hip-hop crew: originating from Igor Stravinsky’s ballet »Apollon musagète«, the musicians of Ensemble Resonanz devise the new, crossover piece »Masters of Ceremony« with experts from the HipHop Academy in Hamburg Billstedt. Together, they ask what the ballet, premiered in 1928 in which the god Apollo dances with three muses, has got to do with us today and create new music from the original. The interplay of breakdancing, rap and string music produces such an extraordinary output, which is staged using scenery and visuals in the Grand Hall.
+
+Eine interdisziplinäre Performance mit Musik von Igor Strawinsky und
+
+
+==========================================================================================
+
+=== Prompt 9/10 ===
+Generated at: 2026-04-09T03:40:27.528680+00:00
+Source URL: https://www.elbphilharmonie.de/en/whats-on/mischa-lily-sascha-maisky-neue-philharmonie-hamburg/27678
+
+# System Prompt
+
+Extract concert entities as strict JSON only. Return keys p (performers), w (works), v (venue), optional d (date), s (sold_out boolean), and pt (price_tags string list). Normalize to atomic list items: each performer must be one person or ensemble name only; each work must be one composition in program order. Do not combine multiple performers or works into one string item. Input may contain sections Event Metadata, Performers, and Programme with bullet lines. Prefer explicit values from those sections. Ignore non-entity labels like Start, End, Series, Find out more, Promoter, Supported by, and booklet/pdf references. For performer lines with roles/instruments, keep only the person or ensemble name. Treat ticketing lines as evidence for sold_out and pt, not as works. Extract concise ticket price tags exactly as shown in text when present (examples: 'EUR 39', '$45', 'ab 20 EUR', 'Free'). Each work item must include c (composer) and t (title), using empty strings when unknown. Do not match to external databases and do not add explanations or markdown.
+
+# User Prompt
+
+Concert listing text:
+Event Metadata:
+Name: Mischa, Lily & Sascha Maisky / Neue Philharmonie Hamburg
+Venue: 
+Date: Fri, 10 Apr 2026 20:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/mischa-lily-sascha-maisky-neue-philharmonie-hamburg/27678
+
+Performers:
+- Neue Philharmonie Hamburg
+- Sascha Maisky
+- violin
+- Mischa Maisky
+- violoncello
+- Lily Maisky
+- piano
+- conductor
+- Ernest Hoetzl
+
+Programme:
+- Ludwig van Beethoven
+- Concerto for Piano, Violin, Violoncello and Orchestra in C major, Op. 56 »Triple Concerto«
+- Felix Mendelssohn Bartholdy
+- Symphony No. 4 in A major, Op. 90 »Italian«
+- Read more
+- Read less
+
+Ticketing: Tickets from € 20.05 € 20.05 | 34.95 | 40.55 | 43.75 | 56.95 | Tickets from € 20.05 | from € | 20.05 | € 20.05 | 34.95 | 40.55 | 43.75 | 56.95 | Rate per hour or part thereof: €4.50 | Night rate (18:00–06:00): maximum €11 | 24-hour rate: maximum €30
+
+Excerpt:
+The legendary cellist Mischa Maisky will be performing at this concert together with his children – pianist Lili Maisky and violinist Sasha Maisky. Accompanied by the Neue Philharmonie Hamburg under the baton of Ernest Hoetzl, they will present Beethoven’s only »collective« masterpiece – the Triple Concerto for Violin, Violoncello and Piano.
+
+Ludwig van Beethoven Concerto for Piano, Violin, Violoncello and Orchestra in C major, Op. 56 »Triple Concerto«
+
+Felix Mendelssohn Bartholdy Symphony No. 4 in A major, Op. 90 »Italian«
+
+Return JSON schema:
+{"p": ["string"], "w": [{"c": "string", "t": "string"}], "v": "string", "d": "string optional", "s": "boolean optional", "pt": ["string"]}
+
+# Raw Extraction Text
+
+Event Metadata:
+Name: Mischa, Lily & Sascha Maisky / Neue Philharmonie Hamburg
+Venue: 
+Date: Fri, 10 Apr 2026 20:00
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/mischa-lily-sascha-maisky-neue-philharmonie-hamburg/27678
+
+Performers:
+- Neue Philharmonie Hamburg
+- Sascha Maisky
+- violin
+- Mischa Maisky
+- violoncello
+- Lily Maisky
+- piano
+- conductor
+- Ernest Hoetzl
+
+Programme:
+- Ludwig van Beethoven
+- Concerto for Piano, Violin, Violoncello and Orchestra in C major, Op. 56 »Triple Concerto«
+- Felix Mendelssohn Bartholdy
+- Symphony No. 4 in A major, Op. 90 »Italian«
+- Read more
+- Read less
+
+Ticketing: Tickets from € 20.05 € 20.05 | 34.95 | 40.55 | 43.75 | 56.95 | Tickets from € 20.05 | from € | 20.05 | € 20.05 | 34.95 | 40.55 | 43.75 | 56.95 | Rate per hour or part thereof: €4.50 | Night rate (18:00–06:00): maximum €11 | 24-hour rate: maximum €30
+
+Excerpt:
+The legendary cellist Mischa Maisky will be performing at this concert together with his children – pianist Lili Maisky and violinist Sasha Maisky. Accompanied by the Neue Philharmonie Hamburg under the baton of Ernest Hoetzl, they will present Beethoven’s only »collective« masterpiece – the Triple Concerto for Violin, Violoncello and Piano.
+
+Ludwig van Beethoven Concerto for Piano, Violin, Violoncello and Orchestra in C major, Op. 56 »Triple Concerto«
+
+Felix Mendelssohn Bartholdy Symphony No. 4 in A major, Op. 90 »Italian«
+
+
+==========================================================================================
+
+=== Prompt 10/10 ===
+Generated at: 2026-04-09T03:40:28.154763+00:00
+Source URL: https://www.elbphilharmonie.de/en/whats-on/quatuor-arod/23439
+
+# System Prompt
+
+Extract concert entities as strict JSON only. Return keys p (performers), w (works), v (venue), optional d (date), s (sold_out boolean), and pt (price_tags string list). Normalize to atomic list items: each performer must be one person or ensemble name only; each work must be one composition in program order. Do not combine multiple performers or works into one string item. Input may contain sections Event Metadata, Performers, and Programme with bullet lines. Prefer explicit values from those sections. Ignore non-entity labels like Start, End, Series, Find out more, Promoter, Supported by, and booklet/pdf references. For performer lines with roles/instruments, keep only the person or ensemble name. Treat ticketing lines as evidence for sold_out and pt, not as works. Extract concise ticket price tags exactly as shown in text when present (examples: 'EUR 39', '$45', 'ab 20 EUR', 'Free'). Each work item must include c (composer) and t (title), using empty strings when unknown. Do not match to external databases and do not add explanations or markdown.
+
+# User Prompt
+
+Concert listing text:
+Event Metadata:
+Name: Quatuor Arod
+Venue: 
+Date: Fri, 10 Apr 2026 19:30
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/quatuor-arod/23439
+
+Performers:
+- Quatuor Arod
+- Shuichi Okada
+- violin
+- Alexandre Vu
+- violin
+- Tanguy Parisot
+- viola
+- Jérémy Garbarg
+- violoncello
+
+Programme:
+- Quatuor Arod (German only)
+- Joseph Haydn
+- Streichquartett G-Dur op. 76/1
+- Béla Bartók
+- String Quartet No. 5, Sz 102
+- –  Interval –
+- Piotr I. Tschaikowsky
+- String Quartet No. 1 in D major, Op. 11
+- Read more
+- Read less
+- Pre-Concert Talk
+- with Noemi Deitz (in German)
+- 18:30
+-          / Elbphilharmonie, Kleiner Saal
+- Subscription
+- String Quartet
+- View the subscription
+
+Ticketing: Sold out € 13 | 24 | 37 | 53 | € 13 | 24 | 37 | 53 | Tickets € 13 | 24 | 37 | 53 | Tickets | Sold out | Remaining tickets occasionally available at box office | The cloakrooms are located in the foyer (fee: € 2). Jackets and handbags may be taken into the hall.
+
+Excerpt:
+A first prize at the ARD International Music Competition has already kick-started so many careers – this is also true for Quatuor Arod, which made its international breakthrough after winning in 2016 and debuted as a »Rising Star« at the Elbphilharmonie in 2019. The Bayerischer Rundfunk writes: »This string quartet plays technically at an outstanding level – in a league with the very best.« Whether it perhaps adds a soft spot for Bach chorales to this? The four Frenchmen have already released 36 videos with these short baroque pieces, sometimes as an encore and sometimes as a ritual at the start of their rehearsals.
+
+Joseph Haydn Streichquartett G-Dur op. 76/1
+
+Béla Bartók String Quartet No. 5, Sz 102
+
+Piotr I. Tschaikowsky String Quartet No. 1 in D major, Op. 11
+
+Return JSON schema:
+{"p": ["string"], "w": [{"c": "string", "t": "string"}], "v": "string", "d": "string optional", "s": "boolean optional", "pt": ["string"]}
+
+# Raw Extraction Text
+
+Event Metadata:
+Name: Quatuor Arod
+Venue: 
+Date: Fri, 10 Apr 2026 19:30
+Time: 
+Source: Elbphilharmonie
+Source URL: https://www.elbphilharmonie.de/en/whats-on/quatuor-arod/23439
+
+Performers:
+- Quatuor Arod
+- Shuichi Okada
+- violin
+- Alexandre Vu
+- violin
+- Tanguy Parisot
+- viola
+- Jérémy Garbarg
+- violoncello
+
+Programme:
+- Quatuor Arod (German only)
+- Joseph Haydn
+- Streichquartett G-Dur op. 76/1
+- Béla Bartók
+- String Quartet No. 5, Sz 102
+- –  Interval –
+- Piotr I. Tschaikowsky
+- String Quartet No. 1 in D major, Op. 11
+- Read more
+- Read less
+- Pre-Concert Talk
+- with Noemi Deitz (in German)
+- 18:30
+-          / Elbphilharmonie, Kleiner Saal
+- Subscription
+- String Quartet
+- View the subscription
+
+Ticketing: Sold out € 13 | 24 | 37 | 53 | € 13 | 24 | 37 | 53 | Tickets € 13 | 24 | 37 | 53 | Tickets | Sold out | Remaining tickets occasionally available at box office | The cloakrooms are located in the foyer (fee: € 2). Jackets and handbags may be taken into the hall.
+
+Excerpt:
+A first prize at the ARD International Music Competition has already kick-started so many careers – this is also true for Quatuor Arod, which made its international breakthrough after winning in 2016 and debuted as a »Rising Star« at the Elbphilharmonie in 2019. The Bayerischer Rundfunk writes: »This string quartet plays technically at an outstanding level – in a league with the very best.« Whether it perhaps adds a soft spot for Bach chorales to this? The four Frenchmen have already released 36 videos with these short baroque pieces, sometimes as an encore and sometimes as a ritual at the start of their rehearsals.
+
+Joseph Haydn Streichquartett G-Dur op. 76/1
+
+Béla Bartók String Quartet No. 5, Sz 102
+
+Piotr I. Tschaikowsky String Quartet No. 1 in D major, Op. 11

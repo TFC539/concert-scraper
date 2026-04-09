@@ -1,8 +1,0 @@
-{
-  "model_name": "distilbert-base-multilingual-cased",
-  "epochs": 3,
-  "batch_size": 8,
-  "lr": 5e-05,
-  "data_dir": "ml/data/processed/hf",
-  "status": "placeholder_training_completed"
-}

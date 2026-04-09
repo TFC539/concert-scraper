@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import smtplib
 import unicodedata
 from email.message import EmailMessage
@@ -9,8 +10,12 @@ import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import AppSettings, Concert, NotificationRule
+from .entity_pipeline import process_concert_entity_pipeline
+from .models import AppSettings, Concert, Event, EventPerformer, EventWork, NotificationRule, UnresolvedEntity
 from .scrapers import scrape_all
+
+
+logger = logging.getLogger(__name__)
 
 
 MONTH_MAP = {
@@ -140,6 +145,9 @@ def backfill_concert_metadata(db: Session) -> int:
 
     if changed:
         db.commit()
+        logger.info("backfill_metadata_updated changed=%s", changed)
+    else:
+        logger.info("backfill_metadata_no_changes")
 
     return changed
 
@@ -209,14 +217,31 @@ def send_email(settings: AppSettings, concert: Concert, matching_rules: list[Not
         smtp.send_message(message)
 
 
-def scrape_and_persist(db: Session) -> int:
+def scrape_and_persist(
+    db: Session,
+    sources: list[str] | None = None,
+    max_per_source: int | None = None,
+    max_total: int | None = None,
+) -> int:
     settings = get_or_create_settings(db)
     rules = db.scalars(select(NotificationRule)).all()
     is_initial_import = db.scalar(select(Concert.id).limit(1)) is None
     today = datetime.utcnow().date()
 
     inserted = 0
-    scraped = scrape_all()
+    scraped = scrape_all(
+        sources=sources,
+        max_per_source=max_per_source,
+        max_total=max_total,
+    )
+    logger.info(
+        "scrape_persist_started scraped_count=%s initial_import=%s sources=%s max_per_source=%s max_total=%s",
+        len(scraped),
+        is_initial_import,
+        sources or ["all"],
+        max_per_source,
+        max_total,
+    )
     for item in scraped:
         normalized_date = _normalize_date_text(item.date)
 
@@ -249,8 +274,36 @@ def scrape_and_persist(db: Session) -> int:
                 exists.program = item.program
                 updated = True
 
-            if updated:
+            existing_event_id = db.scalar(select(Event.id).where(Event.concert_id == exists.id).limit(1))
+            needs_entity_processing = existing_event_id is None
+
+            needs_normalized_backfill = False
+            if existing_event_id is not None:
+                has_open_unresolved = (
+                    db.scalar(
+                        select(UnresolvedEntity.id)
+                        .where(UnresolvedEntity.event_id == existing_event_id)
+                        .where(UnresolvedEntity.status == "open")
+                        .limit(1)
+                    )
+                    is not None
+                )
+                has_performer_links = (
+                    db.scalar(select(EventPerformer.id).where(EventPerformer.event_id == existing_event_id).limit(1))
+                    is not None
+                )
+                has_work_links = (
+                    db.scalar(select(EventWork.id).where(EventWork.event_id == existing_event_id).limit(1)) is not None
+                )
+                needs_normalized_backfill = has_open_unresolved and not has_performer_links and not has_work_links
+
+            if updated or needs_entity_processing or needs_normalized_backfill:
                 db.add(exists)
+                db.flush()
+                try:
+                    process_concert_entity_pipeline(db, exists)
+                except Exception:
+                    logger.exception("Entity pipeline failed for updated concert id=%s", exists.id)
             continue
 
         concert = Concert(
@@ -269,13 +322,19 @@ def scrape_and_persist(db: Session) -> int:
         db.flush()
         inserted += 1
 
+        try:
+            process_concert_entity_pipeline(db, concert)
+        except Exception:
+            logger.exception("Entity pipeline failed for new concert id=%s", concert.id)
+
         if settings.notifications_enabled:
             matching = [rule for rule in rules if should_notify(concert, rule)]
             if matching:
                 try:
                     send_email(settings, concert, matching)
                 except Exception:
-                    pass
+                    logger.exception("notification_email_failed concert_id=%s", concert.id)
 
     db.commit()
+    logger.info("scrape_persist_finished inserted=%s", inserted)
     return inserted

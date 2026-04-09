@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
 import re
 import unicodedata
+from typing import Callable
 from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -20,6 +26,16 @@ class ConcertData:
     hall: str
     date: str
     time: str
+
+
+@dataclass
+class ElbDetailMetadata:
+    program: str = ""
+    performers: str = ""
+    hall: str = ""
+    date: str = ""
+    time: str = ""
+    ticketing: str = ""
 
 
 HEADERS = {
@@ -193,35 +209,172 @@ def _merge_performer_text(existing: str, extra: str) -> str:
     return " / ".join(merged)
 
 
-def _extract_elb_detail_metadata(source_url: str) -> tuple[str, str]:
+def _merge_text_field(existing: str, extra: str, separator: str = " | ") -> str:
+    base = (existing or "").strip()
+    addon = (extra or "").strip()
+    if not addon:
+        return base
+    if not base:
+        return addon
+    if _normalize_text(addon) in _normalize_text(base):
+        return base
+    if _normalize_text(base) in _normalize_text(addon):
+        return addon
+    return f"{base}{separator}{addon}"
+
+
+def _append_labeled_program_context(program: str, label: str, value: str) -> str:
+    base = (program or "").strip()
+    addon = (value or "").strip()
+    if not addon:
+        return base
+
+    tagged = f"{label}: {addon}"
+    if not base:
+        return tagged
+    if _normalize_text(tagged) in _normalize_text(base):
+        return base
+    return f"{base}\n{tagged}"
+
+
+def _extract_ticketing_from_soup(soup: BeautifulSoup) -> str:
+    candidates: list[str] = []
+
+    for node in soup.select(
+        "[class*='ticket'], [class*='price'], [class*='booking'], [data-qa*='ticket'], [data-qa*='price']"
+    ):
+        text = _text(node)
+        if text:
+            candidates.append(text)
+
+    for text in soup.stripped_strings:
+        line = str(text or "").strip()
+        if not line:
+            continue
+        normalized = _normalize_text(line)
+        if not normalized:
+            continue
+        if re.search(r"\bsold\s*-?\s*out\b|\bausverkauft\b|remaining tickets|box office", normalized):
+            candidates.append(line)
+            continue
+        if re.search(r"(?:€|\bEUR\b|\bCHF\b|\$)\s*\d|\d\s*(?:€|\bEUR\b|\bCHF\b|\$)", line):
+            candidates.append(line)
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        compact = re.sub(r"\s+", " ", candidate).strip()
+        if not compact or len(compact) > 220:
+            continue
+        lowered = compact.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        cleaned.append(compact)
+
+    return " | ".join(cleaned)
+
+
+def _extract_elb_detail_metadata(source_url: str) -> ElbDetailMetadata:
+    logger.info("elb_detail_fetch_started source_url=%s", source_url)
     try:
         response = requests.get(source_url, timeout=30, headers=HEADERS)
         response.raise_for_status()
     except Exception:
-        return "", ""
+        logger.warning("elb_detail_fetch_failed source_url=%s", source_url, exc_info=True)
+        return ElbDetailMetadata()
 
     soup = BeautifulSoup(response.text, "html.parser")
+    soup_ticketing = _extract_ticketing_from_soup(soup)
     root = soup.select_one(".event-detail-content")
     if not root:
-        return "", ""
+        logger.warning("elb_detail_root_missing source_url=%s", source_url)
+        return ElbDetailMetadata(
+            hall=_text(soup.select_one(".date-and-place .place-cell, .place-cell")),
+            date=_text(soup.select_one(".date-and-place .date, .date")),
+            time=_text(soup.select_one(".date-and-place .time, .time")),
+            ticketing=soup_ticketing,
+        )
 
-    program_paragraphs: list[str] = []
-    for paragraph in root.select("p"):
-        if paragraph.get("class"):
-            continue
-        text = paragraph.get_text(" ", strip=True)
-        if len(text) >= 80:
-            program_paragraphs.append(text)
+    detail_hall = _text(soup.select_one(".date-and-place .place-cell, .place-cell"))
+    detail_date = _text(soup.select_one(".date-and-place .date, .date"))
+    detail_time = _text(soup.select_one(".date-and-place .time, .time"))
 
+    lines = [text.strip() for text in root.stripped_strings if text and text.strip()]
+
+    current_section = ""
     performer_lines: list[str] = []
-    for paragraph in root.select("p.artists"):
-        text = _clean_performer_line(paragraph.get_text(" ", strip=True))
-        if text:
-            performer_lines.append(text)
+    program_lines: list[str] = []
+    schedule_lines: list[str] = []
+    ticket_lines: list[str] = []
 
-    program = "\n\n".join(_unique_parts(program_paragraphs))
+    for line in lines:
+        normalized = _normalize_text(line)
+        if not normalized:
+            continue
+
+        if normalized.startswith("performers"):
+            current_section = "performers"
+            continue
+        if normalized.startswith("programme") or normalized.startswith("program"):
+            current_section = "program"
+            continue
+        if normalized.startswith("series") or normalized.startswith("find out more"):
+            current_section = ""
+            continue
+
+        if normalized.startswith("location"):
+            hall_match = re.search(r"location\s*[:\-]\s*(.+)$", line, flags=re.IGNORECASE)
+            if hall_match:
+                detail_hall = hall_match.group(1).strip()
+            continue
+
+        if normalized.startswith("start ") or normalized.startswith("end "):
+            schedule_lines.append(line)
+            continue
+
+        if re.search(r"\bsold\s*-?\s*out\b|\bausverkauft\b|remaining tickets|ticket", normalized):
+            ticket_lines.append(line)
+
+        if current_section == "performers":
+            cleaned = _clean_performer_line(line)
+            if cleaned and not cleaned.lower().startswith("performers"):
+                performer_lines.append(cleaned)
+            continue
+
+        if current_section == "program":
+            if re.search(r"\b(pdf|kb)\b", normalized):
+                continue
+            if normalized.startswith("promoter") or normalized.startswith("supported by"):
+                continue
+            program_lines.append(line)
+
+    program = "\n".join(_unique_parts(program_lines))
     performers = " / ".join(_unique_parts(performer_lines))
-    return program, performers
+    schedule_text = " | ".join(_unique_parts(schedule_lines))
+    ticketing = " | ".join(_unique_parts(ticket_lines))
+    ticketing = _merge_text_field(ticketing, soup_ticketing)
+
+    merged_time = _merge_text_field(detail_time, schedule_text)
+    metadata = ElbDetailMetadata(
+        program=program,
+        performers=performers,
+        hall=detail_hall,
+        date=detail_date,
+        time=merged_time,
+        ticketing=ticketing,
+    )
+    logger.info(
+        "elb_detail_fetch_success source_url=%s performers_lines=%s program_lines=%s has_hall=%s has_date=%s has_time=%s ticketing_entries=%s",
+        source_url,
+        len(performer_lines),
+        len(program_lines),
+        bool(metadata.hall),
+        bool(metadata.date),
+        bool(metadata.time),
+        len([entry for entry in ticket_lines if entry.strip()]),
+    )
+    return metadata
 
 
 def _extract_elb_program_and_performers(subtitle: str) -> tuple[str, str]:
@@ -350,11 +503,18 @@ def _extract_proarte_performers_and_program(name: str, cast: str) -> tuple[str, 
     return performers, program
 
 
-def _extract_elb_events(soup: BeautifulSoup, page_url: str) -> list[ConcertData]:
+def _extract_elb_events(soup: BeautifulSoup, page_url: str, max_events: int | None = None) -> list[ConcertData]:
     events: list[ConcertData] = []
     seen_ids: set[str] = set()
 
+    card_count = len(soup.select(".event-item"))
+    logger.info("elb_list_parse_started page_url=%s card_count=%s", page_url, card_count)
+
     for card in soup.select(".event-item"):
+        if max_events is not None and len(events) >= max_events:
+            logger.info("elb_list_parse_limit_reached page_url=%s max_events=%s", page_url, max_events)
+            break
+
         link = card.select_one("a.event-title[href], a.event-image-link[href], a[href*='/en/whats-on/']")
         if not link:
             continue
@@ -370,6 +530,7 @@ def _extract_elb_events(soup: BeautifulSoup, page_url: str) -> list[ConcertData]
 
         name = _text(card.select_one(".event-title")) or _text(link)
         if not name:
+            logger.warning("elb_event_skipped_missing_name page_url=%s event_url=%s", page_url, full_href)
             continue
 
         subtitle = _text(card.select_one(".event-subtitle"))
@@ -384,19 +545,23 @@ def _extract_elb_events(soup: BeautifulSoup, page_url: str) -> list[ConcertData]
         performers, performer_format = _extract_performer_and_format_from_text(performers)
         program = _merge_program_text(program, performer_format)
 
-        needs_detail_enrichment = (not program.strip()) or (not performers.strip())
-        if needs_detail_enrichment:
-            detail_program, detail_performers = _extract_elb_detail_metadata(full_href)
-            if detail_program:
-                if not program.strip():
-                    program = detail_program
-                elif len(detail_program) > len(program):
-                    program = detail_program
-            if detail_performers:
-                if performers.strip() == name.strip() and _normalize_text(name) in _normalize_text(detail_performers):
-                    performers = detail_performers
-                else:
-                    performers = _merge_performer_text(performers, detail_performers)
+        detail = _extract_elb_detail_metadata(full_href)
+        if detail.program:
+            if not program.strip() or len(detail.program) > len(program):
+                program = detail.program
+            else:
+                program = _append_labeled_program_context(program, "Programme Notes", detail.program)
+        if detail.performers:
+            if performers.strip() == name.strip() and _normalize_text(name) in _normalize_text(detail.performers):
+                performers = detail.performers
+            else:
+                performers = _merge_performer_text(performers, detail.performers)
+        if detail.ticketing:
+            program = _append_labeled_program_context(program, "Ticketing", detail.ticketing)
+
+        hall = _merge_text_field(_text(card.select_one(".date-and-place .place-cell, .place-cell")), detail.hall)
+        date = _merge_text_field(_text(card.select_one(".date")), detail.date)
+        time = _merge_text_field(_text(card.select_one(".time")), detail.time)
 
         seen_ids.add(external_id)
         events.append(
@@ -407,12 +572,24 @@ def _extract_elb_events(soup: BeautifulSoup, page_url: str) -> list[ConcertData]
                 name=name,
                 program=program,
                 performers=performers,
-                hall=_text(card.select_one(".date-and-place .place-cell, .place-cell")),
-                date=_text(card.select_one(".date")),
-                time=_text(card.select_one(".time")),
+                hall=hall,
+                date=date,
+                time=time,
             )
         )
 
+        logger.info(
+            "elb_event_enriched event_url=%s name=%s performers_len=%s program_len=%s hall=%s date=%s time=%s",
+            full_href,
+            name,
+            len(performers or ""),
+            len(program or ""),
+            hall,
+            date,
+            time,
+        )
+
+    logger.info("elb_list_parse_complete page_url=%s events=%s", page_url, len(events))
     return events
 
 
@@ -431,47 +608,80 @@ def _find_elb_next_page(soup: BeautifulSoup, page_url: str) -> str | None:
     return None
 
 
-def scrape_elbphilharmonie() -> list[ConcertData]:
+def scrape_elbphilharmonie(max_events: int | None = None) -> list[ConcertData]:
+    max_events = _normalize_limit(max_events)
     start_url = "https://www.elbphilharmonie.de/en/whats-on/"
     events: list[ConcertData] = []
     seen_ids: set[str] = set()
     visited_pages: set[str] = set()
     current_url = start_url
 
+    logger.info("scrape_source_started source=Elbphilharmonie start_url=%s", start_url)
+
     for _ in range(40):
+        if max_events is not None and len(events) >= max_events:
+            logger.info("scrape_source_limit_reached source=Elbphilharmonie max_events=%s", max_events)
+            break
+
         if current_url in visited_pages:
             break
         visited_pages.add(current_url)
 
-        response = requests.get(current_url, timeout=30, headers=HEADERS)
-        response.raise_for_status()
+        logger.info("scrape_page_fetch_started source=Elbphilharmonie page_url=%s", current_url)
+        try:
+            response = requests.get(current_url, timeout=30, headers=HEADERS)
+            response.raise_for_status()
+        except Exception:
+            logger.exception("scrape_page_fetch_failed source=Elbphilharmonie page_url=%s", current_url)
+            raise
         soup = BeautifulSoup(response.text, "html.parser")
 
-        page_events = _extract_elb_events(soup, current_url)
+        remaining_for_page = None if max_events is None else max(max_events - len(events), 0)
+        page_events = _extract_elb_events(soup, current_url, remaining_for_page)
         for event in page_events:
             if event.external_id in seen_ids:
                 continue
             seen_ids.add(event.external_id)
             events.append(event)
+            if max_events is not None and len(events) >= max_events:
+                break
 
         next_page = _find_elb_next_page(soup, current_url)
+        logger.info(
+            "scrape_page_processed source=Elbphilharmonie page_url=%s page_events=%s accumulated_events=%s next_page=%s",
+            current_url,
+            len(page_events),
+            len(events),
+            next_page or "",
+        )
         if not next_page:
             break
         current_url = next_page
 
+    logger.info("scrape_source_complete source=Elbphilharmonie events=%s pages=%s", len(events), len(visited_pages))
     return events
 
 
-def scrape_proarte() -> list[ConcertData]:
+def scrape_proarte(max_events: int | None = None) -> list[ConcertData]:
+    max_events = _normalize_limit(max_events)
     url = "https://www.proarte.de/de/konzerte"
-    response = requests.get(url, timeout=30, headers=HEADERS)
-    response.raise_for_status()
+    logger.info("scrape_source_started source=ProArte start_url=%s", url)
+    try:
+        response = requests.get(url, timeout=30, headers=HEADERS)
+        response.raise_for_status()
+    except Exception:
+        logger.exception("scrape_page_fetch_failed source=ProArte page_url=%s", url)
+        raise
 
     soup = BeautifulSoup(response.text, "html.parser")
     events: list[ConcertData] = []
     seen_ids: set[str] = set()
 
     for card in soup.select("li.event-list-item"):
+        if max_events is not None and len(events) >= max_events:
+            logger.info("scrape_source_limit_reached source=ProArte max_events=%s", max_events)
+            break
+
         link = card.select_one("a.h3[href], a.event-item__image-link[href], a[href*='/de/konzerte/']")
         if not link:
             continue
@@ -528,14 +738,130 @@ def scrape_proarte() -> list[ConcertData]:
             )
         )
 
+        logger.info(
+            "proarte_event_collected event_url=%s name=%s performers_len=%s program_len=%s hall=%s date=%s time=%s",
+            full_href,
+            name,
+            len(performers or ""),
+            len(program or ""),
+            venue,
+            date,
+            time,
+        )
+
+    logger.info("scrape_source_complete source=ProArte events=%s", len(events))
     return events
 
 
-def scrape_all() -> list[ConcertData]:
-    events = []
-    for scraper in (scrape_elbphilharmonie, scrape_proarte):
-        try:
-            events.extend(scraper())
-        except Exception:
+SCRAPER_REGISTRY: dict[str, Callable[[int | None], list[ConcertData]]] = {
+    "Elbphilharmonie": scrape_elbphilharmonie,
+    "ProArte": scrape_proarte,
+}
+
+
+def list_scrape_sources() -> list[str]:
+    return list(SCRAPER_REGISTRY.keys())
+
+
+def _normalize_requested_sources(sources: list[str] | None) -> list[str]:
+    if not sources:
+        return list_scrape_sources()
+
+    available = set(list_scrape_sources())
+    normalized: list[str] = []
+    for source in sources:
+        value = (source or "").strip()
+        if not value:
             continue
+        if value not in available:
+            continue
+        if value in normalized:
+            continue
+        normalized.append(value)
+
+    return normalized or list_scrape_sources()
+
+
+def _normalize_limit(limit: int | None) -> int | None:
+    if limit is None:
+        return None
+    if limit <= 0:
+        return None
+    return limit
+
+
+def scrape_all(
+    sources: list[str] | None = None,
+    max_per_source: int | None = None,
+    max_total: int | None = None,
+) -> list[ConcertData]:
+    selected_sources = _normalize_requested_sources(sources)
+    per_source_limit = _normalize_limit(max_per_source)
+    total_limit = _normalize_limit(max_total)
+
+    events: list[ConcertData] = []
+    results_by_source: dict[str, list[ConcertData]] = {}
+
+    # Bound each source so a small global max_total does not trigger full-source retrieval.
+    source_limit = per_source_limit
+    if source_limit is None and total_limit is not None:
+        source_limit = total_limit
+
+    logger.info(
+        "scrape_all_dispatch_started selected_sources=%s source_limit=%s max_total=%s",
+        selected_sources,
+        source_limit,
+        total_limit,
+    )
+
+    with ThreadPoolExecutor(max_workers=max(1, len(selected_sources))) as executor:
+        future_to_source = {
+            executor.submit(SCRAPER_REGISTRY[source], source_limit): source for source in selected_sources
+        }
+
+        for future in as_completed(future_to_source):
+            source = future_to_source[future]
+            scraper = SCRAPER_REGISTRY[source]
+            try:
+                source_events = future.result()
+                results_by_source[source] = source_events
+                logger.info(
+                    "scrape_source_future_complete source=%s fetched=%s",
+                    source,
+                    len(source_events),
+                )
+            except Exception:
+                logger.exception("scrape_source_failed scraper=%s", scraper.__name__)
+                results_by_source[source] = []
+
+    for source in selected_sources:
+        source_events = results_by_source.get(source, [])
+
+        if per_source_limit is not None:
+            source_events = source_events[:per_source_limit]
+
+        if total_limit is not None:
+            remaining = max(total_limit - len(events), 0)
+            if remaining == 0:
+                break
+            source_events = source_events[:remaining]
+
+        events.extend(source_events)
+        logger.info(
+            "scrape_source_collected source=%s selected=%s total_so_far=%s",
+            source,
+            len(source_events),
+            len(events),
+        )
+
+        if total_limit is not None and len(events) >= total_limit:
+            break
+
+    logger.info(
+        "scrape_all_complete total_events=%s selected_sources=%s max_per_source=%s max_total=%s",
+        len(events),
+        selected_sources,
+        per_source_limit,
+        total_limit,
+    )
     return events

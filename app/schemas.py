@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, EmailStr
 
 
@@ -10,6 +12,10 @@ class SettingsUpdate(BaseModel):
     sender_email: EmailStr | None = None
     recipient_email: EmailStr | None = None
     notifications_enabled: bool = False
+    openrouter_api_key: str = ""
+    openrouter_model: str = "openai/gpt-4.1-mini"
+    openrouter_timeout_seconds: int = 40
+    openrouter_max_retries: int = 2
 
 
 class RuleCreate(BaseModel):
@@ -19,3 +25,21 @@ class RuleCreate(BaseModel):
     date_contains: str = ""
     time_contains: str = ""
     enabled: bool = True
+
+
+class ScrapeNowRequest(BaseModel):
+    sources: list[str] = []
+    max_per_source: int | None = None
+    max_total: int | None = None
+
+
+class ResolveUnresolvedRequest(BaseModel):
+    action: Literal["accept_candidate", "create_new", "mark_distinct"]
+    candidate_id: int | None = None
+    value: str = ""
+    reason: str = ""
+
+
+class UpdateMergeSuggestionRequest(BaseModel):
+    action: Literal["merge", "reject", "do_not_merge"]
+    reason: str = ""
