@@ -57,6 +57,11 @@ a {
   text-decoration: none;
 }
 
+:focus-visible {
+  outline: 2px solid var(--amber-400);
+  outline-offset: 2px;
+}
+
 #root {
   min-height: 100vh;
   min-height: 100dvh;
@@ -210,6 +215,10 @@ a {
   z-index: 1001;
 }
 
+.hamburger:focus-visible {
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
 .hamburger:hover {
   background: rgba(35, 53, 90, 0.14);
   transform: none;
@@ -279,6 +288,7 @@ a {
 
 .nav-overlay {
   display: none;
+  border: 0;
 }
 
 /* ── Mobile nav header / actions inside drawer ───────── */
@@ -342,6 +352,10 @@ a {
   background: rgba(0, 0, 0, 0.08);
   transform: none;
   filter: none;
+}
+
+.notice-close:focus-visible {
+  box-shadow: 0 0 0 3px var(--ring);
 }
 
 /* ── Page layouts ────────────────────────────────────── */
@@ -607,8 +621,14 @@ select:focus {
 }
 
 .suggestion-item:hover,
-.suggestion-item:active {
+.suggestion-item:active,
+.suggestion-item.active {
   background-color: rgba(240, 161, 82, 0.1);
+}
+
+.suggestion-item:focus-visible {
+  outline: 2px solid var(--amber-400);
+  outline-offset: -2px;
 }
 
 .suggestion-type {
